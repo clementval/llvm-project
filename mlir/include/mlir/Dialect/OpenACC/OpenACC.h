@@ -18,24 +18,24 @@
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
-    namespace acc {
+namespace acc {
 
-        class OpenACCDialect : public Dialect {
-        public:
-            explicit OpenACCDialect(MLIRContext *context);
+class OpenACCDialect : public Dialect {
+public:
+  explicit OpenACCDialect(MLIRContext *context);
 
-            static StringRef getDialectNamespace() { return "acc"; }
+  static StringRef getDialectNamespace() { return "acc"; }
 
-            static StringRef getCollapseAttrName() { return "collapse"; }
+  static StringRef getCollapseAttrName() { return "collapse"; }
 
-            static StringRef getAsyncAttrName() { return "async"; }
-        };
+  static StringRef getAsyncAttrName() { return "async"; }
+};
 
 #define GET_OP_CLASSES
 
 #include "mlir/Dialect/OpenACC/OpenACC.h.inc"
 
-    } // end namespace acc
+} // end namespace acc
 } // end namespace mlir
 
 #endif // MLIR_DIALECT_OPENACC_DIALECT_H

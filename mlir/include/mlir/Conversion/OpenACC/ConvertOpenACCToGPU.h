@@ -18,15 +18,15 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-    template <typename T> class OpPassBase;
-/// Collect a set of patterns to lower from Stencil structure
-/// operations (stencil.stage, stencil.do_method etc.) to loop
-/// operations within the Affine dialect; in particular, convert
-/// abstract stencil descriptions into affine loop nests.
-    void populateOpenACCToGPUConversionPatterns(OwningRewritePatternList &patterns,
-                                                MLIRContext *ctx);
+template <typename T>
+class OpPassBase;
+/// Collect a set of patterns to lower from OpenACC structure
+/// operations (acc.loop, acc.parallel etc.) to other
+/// operations
+void populateOpenACCToGPUConversionPatterns(OwningRewritePatternList &patterns,
+                                            MLIRContext *ctx);
 
-    std::unique_ptr<OpPassBase<FuncOp>> createOpenACCToGPUPass();
+std::unique_ptr<OpPassBase<FuncOp>> createOpenACCToGPUPass();
 
 } // namespace mlir
 
