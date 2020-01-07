@@ -30,19 +30,19 @@ using namespace acc;
 //===----------------------------------------------------------------------===//
 
 OpenACCDialect::OpenACCDialect(MLIRContext *context)
-        : Dialect(getDialectNamespace(), context) {
-    addOperations<
+    : Dialect(getDialectNamespace(), context) {
+  addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/OpenACC/OpenACC.cpp.inc"
-    >();
-    allowsUnknownOperations();
+      >();
+  allowsUnknownOperations();
 }
 
 // Parses an op that has no inputs and no outputs.
 static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
-    if (parser.parseOptionalAttrDict(state.attributes))
-        return failure();
-    return success();
+  if (parser.parseOptionalAttrDict(state.attributes))
+    return failure();
+  return success();
 }
 
 /*
@@ -56,52 +56,53 @@ static ParseResult parseRegionOp(OpAsmParser &parser, OperationState &state,
         if (parser.parseRegion(*region, */
 /*arguments=*//*
 {}, */
-/*argTypes=*//*
-{}))
-            return failure();
-        StructureOp::ensureTerminator(*region, parser.getBuilder(), state.location);
-    }
-    if (succeeded(parser.parseOptionalKeyword("attributes"))) {
-        if (parser.parseOptionalAttrDict(state.attributes))
-            return failure();
-    }
-    return success();
-}*/
+/*argTypes=*/ /*
+ {}))
+             return failure();
+         StructureOp::ensureTerminator(*region, parser.getBuilder(),
+ state.location);
+     }
+     if (succeeded(parser.parseOptionalKeyword("attributes"))) {
+         if (parser.parseOptionalAttrDict(state.attributes))
+             return failure();
+     }
+     return success();
+ }*/
 
 static void printNoIOOp(Operation *op, OpAsmPrinter &printer) {
-    printer << op->getName();
-    printer.printOptionalAttrDict(op->getAttrs());
+  printer << op->getName();
+  printer.printOptionalAttrDict(op->getAttrs());
 }
 
 template <typename StructureOp>
 static ParseResult parseRegionOp(OpAsmParser &parser, OperationState &state,
                                  unsigned int nRegions = 1) {
 
-    llvm::SmallVector<Region *, 2> regions;
-    for (unsigned int i = 0; i < nRegions; ++i) {
-        regions.push_back(state.addRegion());
-    }
+  llvm::SmallVector<Region *, 2> regions;
+  for (unsigned int i = 0; i < nRegions; ++i) {
+    regions.push_back(state.addRegion());
+  }
 
-    for (auto &region : regions) {
-        if (parser.parseRegion(*region, /*arguments=*/{}, /*argTypes=*/{})) {
-            return failure();
-        }
-        StructureOp::ensureTerminator(*region, parser.getBuilder(), state.location);
+  for (auto &region : regions) {
+    if (parser.parseRegion(*region, /*arguments=*/{}, /*argTypes=*/{})) {
+      return failure();
     }
+    StructureOp::ensureTerminator(*region, parser.getBuilder(), state.location);
+  }
 
-    if (succeeded(parser.parseOptionalKeyword("attributes"))) {
-        if (parser.parseOptionalAttrDict(state.attributes))
-            return failure();
-    }
+  if (succeeded(parser.parseOptionalKeyword("attributes"))) {
+    if (parser.parseOptionalAttrDict(state.attributes))
+      return failure();
+  }
 
-    return success();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
 // ParallelOp
 //===----------------------------------------------------------------------===//
 
-//static void print(OpAsmPrinter &p, ParallelOp op) {
+// static void print(OpAsmPrinter &p, ParallelOp op) {
 //    p << op.getOperationName();
 //   // p.printRegion(op.region(),
 //            ///*printEntryBlockArgs=*/false,
@@ -110,22 +111,21 @@ static ParseResult parseRegionOp(OpAsmParser &parser, OperationState &state,
 //}
 
 static void printRegionOp(Operation *op, OpAsmPrinter &printer) {
-    printer << op->getName();
+  printer << op->getName();
 
-    for (auto &region : op->getRegions()) {
-        printer.printRegion(region, false, false);
-    }
+  for (auto &region : op->getRegions()) {
+    printer.printRegion(region, false, false);
+  }
 
-    if (!op->getAttrs().empty()) {
-        printer << " attributes";
-        printer.printOptionalAttrDict(op->getAttrs());
-    }
+  if (!op->getAttrs().empty()) {
+    printer << " attributes";
+    printer.printOptionalAttrDict(op->getAttrs());
+  }
 }
 
 void ParallelOp::build(Builder *builder, OperationState &state) {
-    ensureTerminator(*state.addRegion(), *builder, state.location);
+  ensureTerminator(*state.addRegion(), *builder, state.location);
 }
-
 
 //===----------------------------------------------------------------------===//
 // LoopOp
@@ -135,7 +135,7 @@ void LoopOp::build(Builder *builder, OperationState &result) {
     Region *bodyRegion = result.addRegion();
 }*/
 
-//static void print(OpAsmPrinter &p, LoopOp op) {
+// static void print(OpAsmPrinter &p, LoopOp op) {
 //    p << LoopOp::getOperationName();
 //}
 
@@ -153,14 +153,15 @@ static ParseResult parseLoopOp(OpAsmParser &parser, OperationState &result) {
     return success();
 }*/
 
-
 /*
 static void print(OpAsmPrinter &p, IfOp op) {
     p << LoopOp::getOperationName();
     //p.printRegion(op.bodyRegion(),
-            *//*printEntryBlockArgs=*//*false,
-            *//*printBlockTerminators=*//*false);
-    p.printOptionalAttrDict(op.getAttrs());
+            */
+/*printEntryBlockArgs=*/  /*false,
+                           */
+/*printBlockTerminators=*//*false);
+p.printOptionalAttrDict(op.getAttrs());
 }*/
 
 //===----------------------------------------------------------------------===//

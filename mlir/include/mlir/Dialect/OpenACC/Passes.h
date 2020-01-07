@@ -16,7 +16,7 @@
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
-    std::unique_ptr<OpPassBase<mlir::ModuleOp>> createConvertOpenACCToGPUPass();
+std::unique_ptr<OpPassBase<mlir::ModuleOp>> createConvertOpenACCToGPUPass();
 } // namespace mlir
 
 #endif // MLIR_DIALECT_OPENACC_PASSES_H
