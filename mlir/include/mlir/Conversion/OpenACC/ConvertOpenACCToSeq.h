@@ -18,9 +18,10 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-    template <typename T> class OpPassBase;
+template <typename T>
+class OpPassBase;
 
-    std::unique_ptr<OpPassBase<FuncOp>> createOpenACCToSeqPass();
+std::unique_ptr<OpPassBase<FuncOp>> createOpenACCToSeqPass();
 
 } // namespace mlir
 
