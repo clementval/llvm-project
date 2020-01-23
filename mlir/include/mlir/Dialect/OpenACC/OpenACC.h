@@ -29,6 +29,7 @@ public:
   static StringRef getCollapseAttrName() { return "collapse"; }
 
   static StringRef getAsyncAttrName() { return "async"; }
+  
 };
 
 #define GET_OP_CLASSES

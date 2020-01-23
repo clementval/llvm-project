@@ -74,9 +74,29 @@ def ParallelOp : OpenACC_Op<"parallel",
     let skipDefaultBuilders = 1;
 
     let extraClassDeclaration = [{
-          Block &getBody() {
-              return this->getOperation()->getRegion(0).front();
-          }
+        Block &getBody() {
+            return this->getOperation()->getRegion(0).front();
+        }
+
+        /// Returns the name of the attribute containing the number of gangs.
+        static StringRef getNumGangsAttrName() {
+            return "num_gangs";
+        }
+
+        /// Returns the name of the attribute containing the number of workers.
+        static StringRef getNumWorkersAttrName() {
+            return "num_workers";
+        }
+
+        /// Returns the number of gangs defined for the parallel op
+        unsigned getNumGangs() {
+            return getAttrOfType<IntegerAttr>(getNumGangsAttrName()).getInt();
+        }
+
+        /// Returns the number of workers defined for the parallel op
+        unsigned getNumWorkers() {
+            return getAttrOfType<IntegerAttr>(getNumWorkersAttrName()).getInt();
+        }
     }];
 
 }
