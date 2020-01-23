@@ -20,6 +20,7 @@
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/LoopUtils.h"
 
 using namespace mlir;
 
@@ -121,12 +122,32 @@ void OpenACCToGPULoweringPass::runOnModule() {
 
   auto m = getModule();
   m.walk([&](acc::ParallelOp parallelOp) {
+    auto numGangs = parallelOp.getNumGangs();
+    auto numWorkers = parallelOp.getNumWorkers();
     parallelOp.walk([&](acc::LoopOp loopOp) {
+
       for (auto &op : loopOp.getBody().getOperations()) {
         if (auto forOp = dyn_cast<loop::ForOp>(&op)) {
-          convertLoopNestToGPULaunch(forOp, 1, 1);
+
+          OpBuilder builder(parallelOp.getOperation()->getRegion(0));
+          SmallVector<Value, 3> numWorkGroupsVal, workGroupSizeVal;
+          auto constOp1 = builder.create<ConstantOp>(parallelOp.getLoc(),
+              builder.getIntegerAttr(builder.getIndexType(), numGangs));
+          numWorkGroupsVal.push_back(constOp1);
+
+          auto constOp2 = builder.create<ConstantOp>(parallelOp.getLoc(),
+              builder.getIntegerAttr(builder.getIndexType(), numWorkers));
+          workGroupSizeVal.push_back(constOp2);
+
+          if (failed(convertLoopToGPULaunch(forOp, numWorkGroupsVal,
+                                            workGroupSizeVal))) {
+            loopOp.emitError(
+              "Unable to map loop to accelerator.");
+            signalPassFailure();
+          }
           extractOperationsOutsideOfConstruct(loopOp);
           loopOp.erase();
+
           break;
         } else {
           loopOp.emitError(

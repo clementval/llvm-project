@@ -35,4 +35,19 @@ func @compute(%A: memref<10x10xf32>, %B: memref<10x10xf32>, %C: memref<10x10xf32
 //  CHECK-NEXT:   %{{.*}} = constant 1 : index
 //  CHECK-NEXT:   acc.parallel {
 //  CHECK-NEXT:     acc.loop {
-
+//  CHECK-NEXT:       loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:         loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:           loop.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+//  CHECK-NEXT:             %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<10x10xf32>
+//  CHECK-NEXT:             %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<10x10xf32>
+//  CHECK-NEXT:             %{{.*}} = load %{{.*}}[%{{.*}}, %{{.*}}] : memref<10x10xf32>
+//  CHECK-NEXT:             %{{.*}} = mulf %{{.*}}, %{{.*}} : f32
+//  CHECK-NEXT:             %{{.*}} = addf %{{.*}}, %{{.*}} : f32
+//  CHECK-NEXT:             store %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}] : memref<10x10xf32>
+//  CHECK-NEXT:           }
+//  CHECK-NEXT:         }
+//  CHECK-NEXT:       }
+//  CHECK-NEXT:     } attributes {collapse = 3 : i64}
+//  CHECK-NEXT:   } attributes {async = 1 : i64}
+//  CHECK-NEXT:   return %{{.*}} : memref<10x10xf32>
+//  CHECK-NEXT: }

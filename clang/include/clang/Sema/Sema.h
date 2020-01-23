@@ -6200,6 +6200,9 @@ private:
   llvm::DenseMap<NamedDecl *, NormalizedConstraint *>
       NormalizationCache;
 
+  llvm::ContextualFoldingSet<ConstraintSatisfaction, const ASTContext &>
+      SatisfactionCache;
+
 public:
   const NormalizedConstraint *
   getNormalizedAssociatedConstraints(
@@ -6226,6 +6229,8 @@ public:
 
   /// \brief Check whether the given list of constraint expressions are
   /// satisfied (as if in a 'conjunction') given template arguments.
+  /// \param Template the template-like entity that triggered the constraints
+  /// check (either a concept or a constrained entity).
   /// \param ConstraintExprs a list of constraint expressions, treated as if
   /// they were 'AND'ed together.
   /// \param TemplateArgs the list of template arguments to substitute into the
@@ -6237,23 +6242,10 @@ public:
   /// expression.
   /// \returns true if an error occurred and satisfaction could not be checked,
   /// false otherwise.
-  bool CheckConstraintSatisfaction(TemplateDecl *Template,
-                                   ArrayRef<const Expr *> ConstraintExprs,
-                                   ArrayRef<TemplateArgument> TemplateArgs,
-                                   SourceRange TemplateIDRange,
-                                   ConstraintSatisfaction &Satisfaction);
-
-  bool CheckConstraintSatisfaction(ClassTemplatePartialSpecializationDecl *TD,
-                                   ArrayRef<const Expr *> ConstraintExprs,
-                                   ArrayRef<TemplateArgument> TemplateArgs,
-                                   SourceRange TemplateIDRange,
-                                   ConstraintSatisfaction &Satisfaction);
-
-  bool CheckConstraintSatisfaction(VarTemplatePartialSpecializationDecl *TD,
-                                   ArrayRef<const Expr *> ConstraintExprs,
-                                   ArrayRef<TemplateArgument> TemplateArgs,
-                                   SourceRange TemplateIDRange,
-                                   ConstraintSatisfaction &Satisfaction);
+  bool CheckConstraintSatisfaction(
+      NamedDecl *Template, ArrayRef<const Expr *> ConstraintExprs,
+      ArrayRef<TemplateArgument> TemplateArgs,
+      SourceRange TemplateIDRange, ConstraintSatisfaction &Satisfaction);
 
   /// \brief Check whether the given non-dependent constraint expression is
   /// satisfied. Returns false and updates Satisfaction with the satisfaction
@@ -11678,8 +11670,10 @@ private:
   bool SemaBuiltinConstantArgMultiple(CallExpr *TheCall, int ArgNum,
                                       unsigned Multiple);
   bool SemaBuiltinConstantArgPower2(CallExpr *TheCall, int ArgNum);
-  bool SemaBuiltinConstantArgShiftedByte(CallExpr *TheCall, int ArgNum);
-  bool SemaBuiltinConstantArgShiftedByteOrXXFF(CallExpr *TheCall, int ArgNum);
+  bool SemaBuiltinConstantArgShiftedByte(CallExpr *TheCall, int ArgNum,
+                                         unsigned ArgBits);
+  bool SemaBuiltinConstantArgShiftedByteOrXXFF(CallExpr *TheCall, int ArgNum,
+                                               unsigned ArgBits);
   bool SemaBuiltinARMSpecialReg(unsigned BuiltinID, CallExpr *TheCall,
                                 int ArgNum, unsigned ExpectedFieldNum,
                                 bool AllowName);
