@@ -90,12 +90,17 @@ def ParallelOp : OpenACC_Op<"parallel",
 
         /// Returns the number of gangs defined for the parallel op
         unsigned getNumGangs() {
-            return getAttrOfType<IntegerAttr>(getNumGangsAttrName()).getInt();
+            return getAttrOfType<IntegerAttr>(getNumGangsAttrName()) != nullptr 
+                ? getAttrOfType<IntegerAttr>(getNumGangsAttrName()).getInt() 
+                : 1;
         }
 
         /// Returns the number of workers defined for the parallel op
         unsigned getNumWorkers() {
-            return getAttrOfType<IntegerAttr>(getNumWorkersAttrName()).getInt();
+            return 
+                getAttrOfType<IntegerAttr>(getNumWorkersAttrName()) != nullptr
+                ? getAttrOfType<IntegerAttr>(getNumWorkersAttrName()).getInt()
+                : 1;
         }
     }];
 

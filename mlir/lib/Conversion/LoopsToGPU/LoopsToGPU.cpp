@@ -485,8 +485,8 @@ template <typename OpTy>
 static LogicalResult convertLoopNestToGPULaunch(OpTy forOp,
                                                 unsigned numBlockDims,
                                                 unsigned numThreadDims) {
-  if (failed(checkLoopNestMappable(forOp, numBlockDims, numThreadDims)))
-    return failure();
+  // if (failed(checkLoopNestMappable(forOp, numBlockDims, numThreadDims)))
+  //   return failure();
 
   LoopToGpuConverter converter;
   auto maybeInnerLoop =

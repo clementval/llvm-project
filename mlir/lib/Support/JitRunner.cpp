@@ -269,6 +269,7 @@ int mlir::JitRunnerMain(
   // Get the function used to compile and execute the module.
   using CompileAndExecuteFnT = Error (*)(
       ModuleOp, StringRef, std::function<llvm::Error(llvm::Module *)>);
+  llvm::errs() << mainFuncType.getValue() << "\n";
   auto compileAndExecuteFn =
       llvm::StringSwitch<CompileAndExecuteFnT>(mainFuncType.getValue())
           .Case("f32", compileAndExecuteSingleFloatReturnFunction)

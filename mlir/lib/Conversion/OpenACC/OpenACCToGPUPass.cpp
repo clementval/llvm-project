@@ -124,6 +124,7 @@ void OpenACCToGPULoweringPass::runOnModule() {
   m.walk([&](acc::ParallelOp parallelOp) {
     auto numGangs = parallelOp.getNumGangs();
     auto numWorkers = parallelOp.getNumWorkers();
+    
     parallelOp.walk([&](acc::LoopOp loopOp) {
 
       for (auto &op : loopOp.getBody().getOperations()) {
@@ -149,6 +150,10 @@ void OpenACCToGPULoweringPass::runOnModule() {
           loopOp.erase();
 
           break;
+        } else if(auto affineForOp = dyn_cast<AffineForOp>(&op)) {
+          loopOp.emitError("affine.for operation in acc.loop not supported yet.");
+          signalPassFailure();
+          break;
         } else {
           loopOp.emitError(
               "First operation in acc.loop region must be a loop.");
@@ -156,6 +161,7 @@ void OpenACCToGPULoweringPass::runOnModule() {
         }
       }
     }); // Walk over LoopOp within ParallelOp
+
     extractOperationsOutsideOfConstruct(parallelOp);
     parallelOp.erase();
   }); // Walk over ParallelOp within the module
