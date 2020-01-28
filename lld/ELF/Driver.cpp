@@ -602,8 +602,13 @@ static DiscardPolicy getDiscard(opt::InputArgList &args) {
 
 static StringRef getDynamicLinker(opt::InputArgList &args) {
   auto *arg = args.getLastArg(OPT_dynamic_linker, OPT_no_dynamic_linker);
-  if (!arg || arg->getOption().getID() == OPT_no_dynamic_linker)
+  if (!arg)
     return "";
+  if (arg->getOption().getID() == OPT_no_dynamic_linker) {
+    // --no-dynamic-linker suppresses undefined weak symbols in .dynsym
+    config->noDynamicLinker = true;
+    return "";
+  }
   return arg->getValue();
 }
 
@@ -894,6 +899,8 @@ static void readConfigs(opt::InputArgList &args) {
   config->ltoDebugPassManager = args.hasArg(OPT_lto_debug_pass_manager);
   config->ltoNewPassManager = args.hasArg(OPT_lto_new_pass_manager);
   config->ltoNewPmPasses = args.getLastArgValue(OPT_lto_newpm_passes);
+  config->ltoWholeProgramVisibility =
+      args.hasArg(OPT_lto_whole_program_visibility);
   config->ltoo = args::getInteger(args, OPT_lto_O, 2);
   config->ltoObjPath = args.getLastArgValue(OPT_lto_obj_path_eq);
   config->ltoPartitions = args::getInteger(args, OPT_lto_partitions, 1);

@@ -1,6 +1,6 @@
 //===- toyc.cpp - The Toy Compiler ----------------------------------------===//
 //
-// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -138,7 +138,7 @@ int loadAndProcessMLIR(mlir::MLIRContext &context,
   if (enableOpt || isLoweringToAffine) {
     // Inline all functions into main and then delete them.
     pm.addPass(mlir::createInlinerPass());
-    pm.addPass(mlir::toy::createDeadFunctionEliminationPass());
+    pm.addPass(mlir::createSymbolDCEPass());
 
     // Now that there is only one function, we can infer the shapes of each of
     // the operations.

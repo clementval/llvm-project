@@ -235,19 +235,45 @@ TEST_F(FormatTestCSharp, CSharpUsing) {
   Style.SpaceBeforeParens = FormatStyle::SBPO_Always;
   verifyFormat("public void foo () {\n"
                "  using (StreamWriter sw = new StreamWriter (filenameA)) {}\n"
+               "  using () {}\n"
                "}",
                Style);
 
+  // Ensure clang-format affects top-level snippets correctly.
   verifyFormat("using (StreamWriter sw = new StreamWriter (filenameB)) {}",
                Style);
 
   Style.SpaceBeforeParens = FormatStyle::SBPO_Never;
   verifyFormat("public void foo() {\n"
                "  using(StreamWriter sw = new StreamWriter(filenameB)) {}\n"
+               "  using() {}\n"
                "}",
                Style);
 
+  // Ensure clang-format affects top-level snippets correctly.
   verifyFormat("using(StreamWriter sw = new StreamWriter(filenameB)) {}",
+               Style);
+
+  Style.SpaceBeforeParens = FormatStyle::SBPO_ControlStatements;
+  verifyFormat("public void foo() {\n"
+               "  using (StreamWriter sw = new StreamWriter(filenameA)) {}\n"
+               "  using () {}\n"
+               "}",
+               Style);
+
+  // Ensure clang-format affects top-level snippets correctly.
+  verifyFormat("using (StreamWriter sw = new StreamWriter(filenameB)) {}",
+               Style);
+
+  Style.SpaceBeforeParens = FormatStyle::SBPO_NonEmptyParentheses;
+  verifyFormat("public void foo() {\n"
+               "  using (StreamWriter sw = new StreamWriter (filenameA)) {}\n"
+               "  using() {}\n"
+               "}",
+               Style);
+
+  // Ensure clang-format affects top-level snippets correctly.
+  verifyFormat("using (StreamWriter sw = new StreamWriter (filenameB)) {}",
                Style);
 }
 
@@ -381,6 +407,14 @@ TEST_F(FormatTestCSharp, CSharpSpaceAfterCStyleCast) {
 
   Style.SpaceAfterCStyleCast = true;
   verifyFormat("(int) x / y;", Style);
+}
+
+TEST_F(FormatTestCSharp, CSharpEscapedQuotesInVerbatimStrings) {
+  FormatStyle Style = getGoogleStyle(FormatStyle::LK_CSharp);
+
+  verifyFormat(R"(string str = @"""")", Style);
+  verifyFormat(R"(string str = @"""Hello world""")", Style);
+  verifyFormat(R"(string str = $@"""Hello {friend}""")", Style);
 }
 
 } // namespace format

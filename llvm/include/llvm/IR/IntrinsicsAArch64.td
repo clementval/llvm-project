@@ -1192,6 +1192,10 @@ def int_aarch64_sve_add   : AdvSIMD_Pred2VectorArg_Intrinsic;
 def int_aarch64_sve_sub   : AdvSIMD_Pred2VectorArg_Intrinsic;
 def int_aarch64_sve_subr  : AdvSIMD_Pred2VectorArg_Intrinsic;
 
+def int_aarch64_sve_pmul       : AdvSIMD_2VectorArg_Intrinsic;
+def int_aarch64_sve_sqdmulh    : AdvSIMD_2VectorArg_Intrinsic;
+def int_aarch64_sve_sqrdmulh   : AdvSIMD_2VectorArg_Intrinsic;
+
 def int_aarch64_sve_mul        : AdvSIMD_Pred2VectorArg_Intrinsic;
 def int_aarch64_sve_smulh      : AdvSIMD_Pred2VectorArg_Intrinsic;
 def int_aarch64_sve_umulh      : AdvSIMD_Pred2VectorArg_Intrinsic;
@@ -1285,6 +1289,15 @@ def int_aarch64_sve_cntw : AdvSIMD_SVE_CNTB_Intrinsic;
 def int_aarch64_sve_cntd : AdvSIMD_SVE_CNTB_Intrinsic;
 
 def int_aarch64_sve_cntp : AdvSIMD_SVE_CNTP_Intrinsic;
+
+//
+// FFR manipulation
+//
+
+def int_aarch64_sve_rdffr   : GCCBuiltin<"__builtin_sve_svrdffr">,   Intrinsic<[llvm_nxv16i1_ty], []>;
+def int_aarch64_sve_rdffr_z : GCCBuiltin<"__builtin_sve_svrdffr_z">, Intrinsic<[llvm_nxv16i1_ty], [llvm_nxv16i1_ty]>;
+def int_aarch64_sve_setffr  : GCCBuiltin<"__builtin_sve_svsetffr">,  Intrinsic<[], []>;
+def int_aarch64_sve_wrffr   : GCCBuiltin<"__builtin_sve_svwrffr">,   Intrinsic<[], [llvm_nxv16i1_ty]>;
 
 //
 // Saturating scalar arithmetic
