@@ -69,6 +69,25 @@ LoopOpLowering::matchAndRewrite(acc::LoopOp loopOp,
   return matchSuccess();
 }
 
+template <typename OpTy>
+static void extractOperationsBeforeRegion(OpTy baseOp) {
+  SmallVector<Operation *, 8> toHoist;
+  for (Operation &op : baseOp.getOperation()
+                           ->getRegion(0)
+                           .getBlocks()
+                           .front()
+                           .getOperations()) {
+    if (&op == baseOp.getOperation()) {
+      continue;
+    } else {
+      toHoist.push_back(&op);
+    }
+  }
+  for (auto *op : toHoist) {
+    op->moveBefore(baseOp.getOperation());
+  }
+}
+
 template <typename StructureOp, typename OpTy>
 static void extractOperationsOutsideOfRegion(StructureOp baseOp, 
                                              OpTy insPosition) {
@@ -125,29 +144,50 @@ static void extractOperationsOutsideOfRegion(StructureOp baseOp,
 //   return outlinedFunc;
 // }
 
-static LogicalResult createGPULaunchForParallelRegion(acc::ParallelOp parallelOp) {
+
+static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp, 
+    ArrayRef<Value> numGangs, ArrayRef<Value> numWorkers) {
+  for (auto &op : accLoopOp.getBody().getOperations()) {
+    if (auto forOp = dyn_cast<loop::ForOp>(&op)) {
+      mapLoopToProcessorIds(forOp, numGangs, numWorkers);
+      extractOperationsBeforeRegion(accLoopOp);
+      accLoopOp.erase();
+      break;
+    } else if (dyn_cast<AffineForOp>(&op)) {
+      accLoopOp.emitError("affine.for operation in acc.loop not supported yet.");
+      return failure();
+    } else {
+      accLoopOp.emitError("First operation in acc.loop region must be a loop.");
+      return failure();
+    }
+  }
+  return success();
+}
+
+static LogicalResult createGPULaunchForParallelRegion(acc::ParallelOp 
+    parallelOp) {
   OpBuilder builder(parallelOp.getOperation());
   auto loc = parallelOp.getLoc();
 
   Value one = builder.create<ConstantOp>(
       loc, builder.getIntegerAttr(builder.getIndexType(), 1));
-  
+
   // Create gangs constant if different than 1
-  Value numGangs = (parallelOp.getNumGangs() != 1) ?     
+  Value numGangs = (parallelOp.getNumGangs() != 1) ? 
     builder.create<ConstantOp>(
-        loc, builder.getIntegerAttr(builder.getIndexType(), 
-        parallelOp.getNumGangs())) : one;
+      loc, builder.getIntegerAttr(builder.getIndexType(), 
+      parallelOp.getNumGangs())) : one;
 
   // Create workers constant if different than 1
-  Value numWorkers = (parallelOp.getNumWorkers() != 1) ?
+  Value numWorkers = (parallelOp.getNumWorkers() != 1) ? 
     builder.create<ConstantOp>(
-        loc, builder.getIntegerAttr(builder.getIndexType(), 
-        parallelOp.getNumWorkers())) : one;
-  
+      loc, builder.getIntegerAttr(builder.getIndexType(), 
+      parallelOp.getNumWorkers())) : one;
+
   llvm::SetVector<Value> valuesToForwardSet;
   getUsedValuesDefinedAbove(parallelOp.region(), parallelOp.region(), 
                             valuesToForwardSet);
-  auto valuesToForward = valuesToForwardSet.takeVector();    
+  auto valuesToForward = valuesToForwardSet.takeVector();
 
   auto launchOp = builder.create<gpu::LaunchOp>(loc, 
       numGangs, one, one, numWorkers, one, one, valuesToForward);
@@ -167,10 +207,19 @@ static LogicalResult createGPULaunchForParallelRegion(acc::ParallelOp parallelOp
     Value to = std::get<1>(pair);
     replaceAllUsesInRegionWith(from, to, launchOp.body());
   }
+
+  SmallVector<Value, 3> workgroupID = {launchOp.getBlockIds().z, launchOp.getBlockIds().y, launchOp.getBlockIds().x};
+  SmallVector<Value, 3> numWorkGroups = {launchOp.getGridSize().z, launchOp.getGridSize().y, launchOp.getGridSize().x};
+  
+  // Adapt acc loop in the parallel region
+  launchOp.walk([&](acc::LoopOp loopOp) {
+    mapParallerLoopToGangWorker(loopOp, workgroupID[0], numWorkGroups[0]);
+  });
   
   parallelOp.erase();
   return success();
 }
+
 
 void OpenACCToGPULoweringPass::runOnModule() {
 
@@ -188,18 +237,10 @@ void OpenACCToGPULoweringPass::runOnModule() {
 
   auto m = getModule();
   m.walk([&](acc::ParallelOp parallelOp) {
-    // auto outlinedParallelRegion = outlineParallelRegion(parallelOp);
 
-    auto numGangs = parallelOp.getNumGangs();
-    auto numWorkers = parallelOp.getNumWorkers();
-
-
-    // 
-    parallelOp.walk([&](acc::LoopOp loopOp) {
-
-    });
-
-    createGPULaunchForParallelRegion(parallelOp);
+    // Convert the parallel region into a GPU kernel
+    if(failed(createGPULaunchForParallelRegion(parallelOp)))
+      signalPassFailure();
 
     // parallelOp.walk([&](acc::LoopOp loopOp) {
 
