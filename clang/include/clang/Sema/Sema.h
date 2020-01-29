@@ -9581,7 +9581,7 @@ public:
   std::string getOpenCLExtensionsFromExtMap(T* FT, MapT &Map);
 
   void setCurrentOpenCLExtension(llvm::StringRef Ext) {
-    CurrOpenCLExtension = Ext;
+    CurrOpenCLExtension = std::string(Ext);
   }
 
   /// Set OpenCL extensions for a type which can only be used when these
@@ -11555,6 +11555,12 @@ public:
                                               IdentifierInfo *II,
                                               SourceLocation OpenParLoc);
   void CodeCompleteInitializer(Scope *S, Decl *D);
+  /// Trigger code completion for a record of \p BaseType. \p InitExprs are
+  /// expressions in the initializer list seen so far and \p D is the current
+  /// Designation being parsed.
+  void CodeCompleteDesignator(const QualType BaseType,
+                              llvm::ArrayRef<Expr *> InitExprs,
+                              const Designation &D);
   void CodeCompleteAfterIf(Scope *S);
 
   void CodeCompleteQualifiedId(Scope *S, CXXScopeSpec &SS, bool EnteringContext,

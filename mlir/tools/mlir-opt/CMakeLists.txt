@@ -35,6 +35,7 @@ set(LIBS
   MLIRNVVMIR
   MLIROpenACC
   MLIROpenACCPasses
+  MLIROpenMP
   MLIROptMain
   MLIRParser
   MLIRPass
