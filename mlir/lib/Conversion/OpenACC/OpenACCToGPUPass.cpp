@@ -20,7 +20,9 @@
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/RegionUtils.h"
 #include "mlir/Transforms/LoopUtils.h"
+#include "llvm/ADT/SetVector.h"
 
 using namespace mlir;
 
@@ -67,14 +69,12 @@ LoopOpLowering::matchAndRewrite(acc::LoopOp loopOp,
   return matchSuccess();
 }
 
-template <typename StructureOp>
-static void extractOperationsOutsideOfConstruct(StructureOp baseOp) {
+template <typename StructureOp, typename OpTy>
+static void extractOperationsOutsideOfRegion(StructureOp baseOp, 
+                                             OpTy insPosition) {
   SmallVector<Operation *, 8> toHoist;
-  for (Operation &op : baseOp.getOperation()
-                           ->getRegion(0)
-                           .getBlocks()
-                           .front()
-                           .getOperations()) {
+  for (Operation &op : baseOp.getOperation()->getRegion(0).getBlocks()
+                           .front().getOperations()) {
     if (&op == baseOp.getOperation()) {
       continue;
     } else {
@@ -83,27 +83,93 @@ static void extractOperationsOutsideOfConstruct(StructureOp baseOp) {
   }
 
   for (auto *op : toHoist) {
-    op->moveBefore(baseOp.getOperation());
+    op->moveBefore(insPosition);
   }
 }
 
-static FuncOp outlineParallelKernel(acc::ParallelOp parallelOp) {
+/**
+ * 
+ */
+// static FuncOp outlineParallelRegion(acc::ParallelOp parallelOp) {
+//   Location loc = parallelOp.getLoc();
+
+//   OpBuilder builder(parallelOp.getContext());
+
+//   std::string parallelRegionKernelName =
+//       Twine(parallelOp.getParentOfType<FuncOp>().getName(), "_kernel").str();
+//   // FunctionType type =
+//   //     FunctionType::get(kernelOperandTypes, {}, parallelOp.getContext());
+
+//   // auto outlinedFunc = builder.create<gpu::GPUFuncOp>(loc, kernelFuncName, type);
+//   //   outlinedFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
+//   //                      builder.getUnitAttr());
+
+//   // outlinedFunc.body().takeBody(parallelOp.body());
+  
+  
+//   FuncOp outlinedFunc = FuncOp::create(loc, parallelRegionKernelName, 
+//       builder.getFunctionType(llvm::None, llvm::None));
+
+//   outlinedFunc.getBody().takeBody(parallelOp.getOperation()->getRegion(0));
+
+//   //outlinedFunc.walk([&](acc::LoopOp loopOp) {});
+
+//   extractOperationsOutsideOfConstruct(parallelOp);
+
+//   // Add a terminator at then end of the new func
+//   builder.setInsertionPointToEnd(&outlinedFunc.getBody().back());
+//   builder.create<mlir::ReturnOp>(loc);
+
+//   parallelOp.erase();
+
+//   return outlinedFunc;
+// }
+
+static LogicalResult createGPULaunchForParallelRegion(acc::ParallelOp parallelOp) {
+  OpBuilder builder(parallelOp.getOperation());
   auto loc = parallelOp.getLoc();
-  std::string parallelKernelName =
-      Twine(parallelOp.getParentOfType<FuncOp>().getName(), "_kernel").str();
-  Builder builder(parallelOp.getContext());
-  FuncOp outlinedFunc = FuncOp::create(
-      loc, parallelKernelName, builder.getFunctionType(llvm::None, llvm::None));
-  outlinedFunc.getBody().takeBody(parallelOp.getOperation()->getRegion(0));
 
-  OpBuilder opBuilder(parallelOp.getOperation());
-  outlinedFunc.walk([&](acc::LoopOp loopOp) {});
+  Value one = builder.create<ConstantOp>(
+      loc, builder.getIntegerAttr(builder.getIndexType(), 1));
+  
+  // Create gangs constant if different than 1
+  Value numGangs = (parallelOp.getNumGangs() != 1) ?     
+    builder.create<ConstantOp>(
+        loc, builder.getIntegerAttr(builder.getIndexType(), 
+        parallelOp.getNumGangs())) : one;
 
-  // Add a terminator at then end of the new func
-  opBuilder.setInsertionPointToEnd(&outlinedFunc.getBody().back());
-  opBuilder.create<mlir::ReturnOp>(loc);
+  // Create workers constant if different than 1
+  Value numWorkers = (parallelOp.getNumWorkers() != 1) ?
+    builder.create<ConstantOp>(
+        loc, builder.getIntegerAttr(builder.getIndexType(), 
+        parallelOp.getNumWorkers())) : one;
+  
+  llvm::SetVector<Value> valuesToForwardSet;
+  getUsedValuesDefinedAbove(parallelOp.region(), parallelOp.region(), 
+                            valuesToForwardSet);
+  auto valuesToForward = valuesToForwardSet.takeVector();    
 
-  return outlinedFunc;
+  auto launchOp = builder.create<gpu::LaunchOp>(loc, 
+      numGangs, one, one, numWorkers, one, one, valuesToForward);
+
+  builder.setInsertionPointToEnd(&launchOp.body().front());
+  // auto barrierOp = builder.create<gpu::BarrierOp>(launchOp.getLoc());
+  auto returnOp = builder.create<gpu::ReturnOp>(launchOp.getLoc());
+
+  // extractOperationsOutsideOfRegion(op, barrierOp);
+  extractOperationsOutsideOfRegion(parallelOp, returnOp);
+
+  // Replace values that are used within the region of the launchOp but are
+  // defined outside. They all are replaced with kernel arguments.
+  for (auto pair :
+       llvm::zip_first(valuesToForward, launchOp.getKernelArguments())) {
+    Value from = std::get<0>(pair);
+    Value to = std::get<1>(pair);
+    replaceAllUsesInRegionWith(from, to, launchOp.body());
+  }
+  
+  parallelOp.erase();
+  return success();
 }
 
 void OpenACCToGPULoweringPass::runOnModule() {
@@ -122,48 +188,57 @@ void OpenACCToGPULoweringPass::runOnModule() {
 
   auto m = getModule();
   m.walk([&](acc::ParallelOp parallelOp) {
+    // auto outlinedParallelRegion = outlineParallelRegion(parallelOp);
+
     auto numGangs = parallelOp.getNumGangs();
     auto numWorkers = parallelOp.getNumWorkers();
-    
+
+
+    // 
     parallelOp.walk([&](acc::LoopOp loopOp) {
 
-      for (auto &op : loopOp.getBody().getOperations()) {
-        if (auto forOp = dyn_cast<loop::ForOp>(&op)) {
+    });
 
-          OpBuilder builder(parallelOp.getOperation()->getRegion(0));
-          SmallVector<Value, 3> numWorkGroupsVal, workGroupSizeVal;
-          auto constOp1 = builder.create<ConstantOp>(parallelOp.getLoc(),
-              builder.getIntegerAttr(builder.getIndexType(), numGangs));
-          numWorkGroupsVal.push_back(constOp1);
+    createGPULaunchForParallelRegion(parallelOp);
 
-          auto constOp2 = builder.create<ConstantOp>(parallelOp.getLoc(),
-              builder.getIntegerAttr(builder.getIndexType(), numWorkers));
-          workGroupSizeVal.push_back(constOp2);
+    // parallelOp.walk([&](acc::LoopOp loopOp) {
 
-          if (failed(convertLoopToGPULaunch(forOp, numWorkGroupsVal,
-                                            workGroupSizeVal))) {
-            loopOp.emitError(
-              "Unable to map loop to accelerator.");
-            signalPassFailure();
-          }
-          extractOperationsOutsideOfConstruct(loopOp);
-          loopOp.erase();
+      
 
-          break;
-        } else if(auto affineForOp = dyn_cast<AffineForOp>(&op)) {
-          loopOp.emitError("affine.for operation in acc.loop not supported yet.");
-          signalPassFailure();
-          break;
-        } else {
-          loopOp.emitError(
-              "First operation in acc.loop region must be a loop.");
-          signalPassFailure();
-        }
-      }
-    }); // Walk over LoopOp within ParallelOp
+      // for (auto &op : loopOp.getBody().getOperations()) {
+      //   if (auto forOp = dyn_cast<loop::ForOp>(&op)) {
 
-    extractOperationsOutsideOfConstruct(parallelOp);
-    parallelOp.erase();
+      //     OpBuilder builder(parallelOp.getOperation()->getRegion(0));
+      //     SmallVector<Value, 3> numWorkGroupsVal, workGroupSizeVal;
+      //     auto constOp1 = builder.create<ConstantOp>(parallelOp.getLoc(),
+      //         builder.getIntegerAttr(builder.getIndexType(), numGangs));
+      //     numWorkGroupsVal.push_back(constOp1);
+
+      //     auto constOp2 = builder.create<ConstantOp>(parallelOp.getLoc(),
+      //         builder.getIntegerAttr(builder.getIndexType(), numWorkers));
+      //     workGroupSizeVal.push_back(constOp2);
+
+      //     if (failed(convertLoopToGPULaunch(forOp, numWorkGroupsVal,
+      //                                       workGroupSizeVal))) {
+      //       loopOp.emitError(
+      //         "Unable to map loop to accelerator.");
+      //       signalPassFailure();
+      //     }
+      //     extractOperationsOutsideOfConstruct(loopOp);
+      //     loopOp.erase();
+
+      //     break;
+      //   } else if(auto affineForOp = dyn_cast<AffineForOp>(&op)) {
+      //     loopOp.emitError("affine.for operation in acc.loop not supported yet.");
+      //     signalPassFailure();
+      //     break;
+      //   } else {
+      //     loopOp.emitError(
+      //         "First operation in acc.loop region must be a loop.");
+      //     signalPassFailure();
+      //   }
+      // }
+    // }); // Walk over LoopOp within ParallelOp
   }); // Walk over ParallelOp within the module
 
   if (failed(applyPartialConversion(m, target, patterns)))
