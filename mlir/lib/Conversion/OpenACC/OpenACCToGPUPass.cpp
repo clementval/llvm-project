@@ -154,14 +154,15 @@ static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp,
       OpBuilder builder(forOp);
       Location loc(forOp.getLoc());
 
-      // idx = blockIdx.x * blockDim.x + threadIdx.x
-      Value tmp = builder.create<MulIOp>(loc, launchOp.getBlockIds().x, forOp.step());
-      Value lb = builder.create<AddIOp>(loc, tmp, forOp.lowerBound());
+      // lb = blockIdx.x * blockDim.x + threadIdx.x
+      Value tmp = builder.create<MulIOp>(loc, launchOp.getBlockIds().x, 
+          launchOp.getBlockSize().x);
+      Value lb = builder.create<AddIOp>(loc, tmp, launchOp.getThreadIds().x);
       forOp.setLowerBound(lb);
 
-      // idx += blockDim.x * gridDim.x
-      Value step = forOp.step();
-      step = builder.create<MulIOp>(loc, step, launchOp.getGridSize().x);
+      // step = gridDim.x * blockDim.x 
+      Value step = builder.create<MulIOp>(loc, launchOp.getGridSize().x, 
+          launchOp.getBlockSize().x);
       forOp.setStep(step);
 
       extractRegionBeforeItself(accLoopOp);
