@@ -70,7 +70,7 @@ LoopOpLowering::matchAndRewrite(acc::LoopOp loopOp,
 }
 
 template <typename OpTy>
-static void extractOperationsBeforeRegion(OpTy baseOp) {
+static void extractRegionBeforeItself(OpTy baseOp) {
   SmallVector<Operation *, 8> toHoist;
   for (Operation &op : baseOp.getOperation()
                            ->getRegion(0)
@@ -154,16 +154,17 @@ static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp,
       OpBuilder builder(forOp);
       Location loc(forOp.getLoc());
 
-      // idx = blockIdx.x * blockDim.x + threadIdx.x 
-      Value tmp = builder.create<MulIOp>(loc, launchOp.getBlockIds().x, launchOp.getGridSize().x);
-      Value lb = builder.create<AddIOp>(loc, tmp, launchOp.getThreadIds().x);
+      // idx = blockIdx.x * blockDim.x + threadIdx.x
+      Value tmp = builder.create<MulIOp>(loc, launchOp.getBlockIds().x, forOp.step());
+      Value lb = builder.create<AddIOp>(loc, tmp, forOp.lowerBound());
       forOp.setLowerBound(lb);
 
       // idx += blockDim.x * gridDim.x
-      Value step = builder.create<MulIOp>(loc, launchOp.getBlockSize().x, launchOp.getGridSize().x);
+      Value step = forOp.step();
+      step = builder.create<MulIOp>(loc, step, launchOp.getGridSize().x);
       forOp.setStep(step);
 
-      extractOperationsBeforeRegion(accLoopOp);
+      extractRegionBeforeItself(accLoopOp);
       accLoopOp.erase();
       break;
     } else if (dyn_cast<AffineForOp>(&op)) {
@@ -206,12 +207,12 @@ static LogicalResult createGPULaunchForParallelRegion(acc::ParallelOp
       numGangs, one, one, numWorkers, one, one, valuesToForward);
 
   builder.setInsertionPointToEnd(&launchOp.body().front());
-  // auto barrierOp = builder.create<gpu::BarrierOp>(launchOp.getLoc());
-  auto returnOp = builder.create<gpu::ReturnOp>(launchOp.getLoc());
+  auto gpuTerminatorOp = builder.create<gpu::TerminatorOp>(launchOp.getLoc());
 
-  // extractOperationsOutsideOfRegion(op, barrierOp);
-  extractOperationsOutsideOfRegion(parallelOp, returnOp);
 
+  // Move parallel body into launchOp
+  parallelOp.getOperation()->moveBefore(gpuTerminatorOp);
+  
   // Replace values that are used within the region of the launchOp but are
   // defined outside. They all are replaced with kernel arguments.
   for (auto pair :
@@ -221,15 +222,14 @@ static LogicalResult createGPULaunchForParallelRegion(acc::ParallelOp
     replaceAllUsesInRegionWith(from, to, launchOp.body());
   }
 
-  // SmallVector<Value, 3> workgroupID = {launchOp.getBlockIds().z, launchOp.getBlockIds().y, launchOp.getBlockIds().x};
-  // SmallVector<Value, 3> numWorkGroups = {launchOp.getGridSize().z, launchOp.getGridSize().y, launchOp.getGridSize().x};
-  
   // Adapt acc loop in the parallel region
-  launchOp.walk([&](acc::LoopOp loopOp) {
+  parallelOp.walk([&](acc::LoopOp loopOp) {
     mapParallerLoopToGangWorker(loopOp, launchOp);
   });
-  
+
+  extractRegionBeforeItself(parallelOp);
   parallelOp.erase();
+
   return success();
 }
 
