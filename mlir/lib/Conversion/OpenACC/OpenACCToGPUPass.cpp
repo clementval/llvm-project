@@ -146,10 +146,23 @@ static void extractOperationsOutsideOfRegion(StructureOp baseOp,
 
 
 static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp, 
-    ArrayRef<Value> numGangs, ArrayRef<Value> numWorkers) {
+    gpu::LaunchOp launchOp) {
   for (auto &op : accLoopOp.getBody().getOperations()) {
     if (auto forOp = dyn_cast<loop::ForOp>(&op)) {
-      mapLoopToProcessorIds(forOp, numGangs, numWorkers);
+      // mapLoopToProcessorIds(forOp, numGangs, numWorkers);
+
+      OpBuilder builder(forOp);
+      Location loc(forOp.getLoc());
+
+      // idx = blockIdx.x * blockDim.x + threadIdx.x 
+      Value tmp = builder.create<MulIOp>(loc, launchOp.getBlockIds().x, launchOp.getGridSize().x);
+      Value lb = builder.create<AddIOp>(loc, tmp, launchOp.getThreadIds().x);
+      forOp.setLowerBound(lb);
+
+      // idx += blockDim.x * gridDim.x
+      Value step = builder.create<MulIOp>(loc, launchOp.getBlockSize().x, launchOp.getGridSize().x);
+      forOp.setStep(step);
+
       extractOperationsBeforeRegion(accLoopOp);
       accLoopOp.erase();
       break;
@@ -208,12 +221,12 @@ static LogicalResult createGPULaunchForParallelRegion(acc::ParallelOp
     replaceAllUsesInRegionWith(from, to, launchOp.body());
   }
 
-  SmallVector<Value, 3> workgroupID = {launchOp.getBlockIds().z, launchOp.getBlockIds().y, launchOp.getBlockIds().x};
-  SmallVector<Value, 3> numWorkGroups = {launchOp.getGridSize().z, launchOp.getGridSize().y, launchOp.getGridSize().x};
+  // SmallVector<Value, 3> workgroupID = {launchOp.getBlockIds().z, launchOp.getBlockIds().y, launchOp.getBlockIds().x};
+  // SmallVector<Value, 3> numWorkGroups = {launchOp.getGridSize().z, launchOp.getGridSize().y, launchOp.getGridSize().x};
   
   // Adapt acc loop in the parallel region
   launchOp.walk([&](acc::LoopOp loopOp) {
-    mapParallerLoopToGangWorker(loopOp, workgroupID[0], numWorkGroups[0]);
+    mapParallerLoopToGangWorker(loopOp, launchOp);
   });
   
   parallelOp.erase();
