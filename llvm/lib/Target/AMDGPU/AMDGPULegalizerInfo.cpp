@@ -1734,6 +1734,12 @@ bool AMDGPULegalizerInfo::legalizeGlobalValue(
 
     // TODO: We could emit code to handle the initialization somewhere.
     if (!AMDGPUTargetLowering::hasDefinedInitializer(GV)) {
+      const SITargetLowering *TLI = ST.getTargetLowering();
+      if (!TLI->shouldUseLDSConstAddress(GV)) {
+        MI.getOperand(1).setTargetFlags(SIInstrInfo::MO_ABS32_LO);
+        return true; // Leave in place;
+      }
+
       B.buildConstant(DstReg, MFI->allocateLDSGlobal(B.getDataLayout(), *GV));
       MI.eraseFromParent();
       return true;
@@ -2762,10 +2768,10 @@ bool AMDGPULegalizerInfo::legalizeBufferAtomic(MachineInstr &MI,
   return true;
 }
 
-// FIMXE: Needs observer like custom
-bool AMDGPULegalizerInfo::legalizeIntrinsic(MachineInstr &MI,
-                                            MachineRegisterInfo &MRI,
-                                            MachineIRBuilder &B) const {
+bool AMDGPULegalizerInfo::legalizeIntrinsic(
+    MachineInstr &MI, MachineIRBuilder &B,
+    GISelChangeObserver &Observer) const {
+  MachineRegisterInfo &MRI = *B.getMRI();
   // Replace the use G_BRCOND with the exec manipulate and branch pseudos.
   auto IntrID = MI.getIntrinsicID();
   switch (IntrID) {
