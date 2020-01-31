@@ -155,43 +155,76 @@ replaceAllUsesExcept(Value orig, Value replacement,
 
 // Collapse `n` perfectly nested loops starting at `rootForOp` 
 static loop::ForOp& collapseNestedLoops(loop::ForOp rootForOp, unsigned n) {
+
+  // Looks for perfectly nested loops
   SmallVector<loop::ForOp, 4> loops;
   getPerfectlyNestedLoops(loops, rootForOp);
   if(loops.size() < n) {
     rootForOp.emitError("Not enough nested loops to collapse");
     return loops[0];
   }
+
+  // Collapse the n first loops of the nest
+  auto nest = llvm::makeMutableArrayRef(loops.data(), n);
+  coalesceLoops(nest);
+  return loops.front();
+
+  // OpBuilder builder(rootForOp);
+  // Location loc(rootForOp.getLoc());
+  // builder.setInsertionPointToStart(rootForOp.getBody());
+
+  // loop::ForOp outermost = loops.front();
+  // loop::ForOp innermost = loops.back();
+
+  // // for(auto loop : loops)
+  // //   normalizeLoops(loops, outermost, innermost);
+
+  // // Define new loop bounds
+  // Value upperBound1 = outermost.upperBound();
+  // Value upperBound2 = innermost.upperBound();
+
+  // Value upperBound = outermost.upperBound();
+  // for(unsigned i = 1; i < loops.size(); ++i) {
+  //   auto mul = builder.create<MulIOp>(loc, upperBound, loops[i].upperBound());
+  //   mul.getOperation()->moveBefore(rootForOp);
+  //   upperBound = mul;
+  // }
+
+  // builder.setInsertionPointToStart(loops[1].getBody());
+  // Value innerLoopInductionVar = loops[1].getInductionVar();
+
+
+
+  // Value index1 = builder.create<UnsignedDivIOp>(loc, innerLoopInductionVar, upperBound1);
+  // Value index2 = builder.create<UnsignedRemIOp>(loc, innerLoopInductionVar, upperBound2);
   
-  OpBuilder builder(rootForOp);
-  Location loc(rootForOp.getLoc());
-  builder.setInsertionPointToStart(rootForOp.getBody());
 
-  // Define new loop bounds
-  Value upperBound1 = loops[0].upperBound();
-  Value upperBound2 = loops[1].upperBound();
-  auto upperBound = builder.create<MulIOp>(loc, upperBound1, upperBound2);
+  // SmallPtrSet<Operation *, 2> preserve{index1.getDefiningOp(),
+  //                                      index2.getDefiningOp()};
 
-  upperBound.getOperation()->moveBefore(rootForOp);
 
-  builder.setInsertionPointToStart(loops[1].getBody());
-  Value innerLoopInductionVar = loops[1].getInductionVar();
-  Value index1 = builder.create<UnsignedDivIOp>(loc, innerLoopInductionVar, upperBound1);
-  Value index2 = builder.create<UnsignedRemIOp>(loc, innerLoopInductionVar, upperBound2);
-  loops[1].setUpperBound(upperBound);
+  // for (auto pair :
+  //      llvm::zip_first(valuesToForward, launchOp.getKernelArguments())) {
+  //   Value from = std::get<0>(pair);
+  //   Value to = std::get<1>(pair);
+  //   replaceAllUsesInRegionWith(from, to, launchOp.body());
+  // }
 
-  SmallPtrSet<Operation *, 2> preserve{index1.getDefiningOp(),
-                                       index2.getDefiningOp()};
-  replaceAllUsesExcept(loops[0].getInductionVar(), index1, preserve);
-  replaceAllUsesExcept(loops[1].getInductionVar(), index2, preserve);
 
-  loops[1].getOperation()->moveBefore(rootForOp);
-  rootForOp.erase();
+  // for(auto loop : loops) {
+  //   replaceAllUsesExcept(loop.getInductionVar(), index1, preserve);
+  // }
 
-  return loops[1];
+  // innermost.setUpperBound(upperBound);
+
+  // // replaceAllUsesExcept(loops[0].getInductionVar(), index1, preserve);
+  // // replaceAllUsesExcept(loops[1].getInductionVar(), index2, preserve);
+
+  // innermost.getOperation()->moveBefore(rootForOp);
+  // outermost.erase();
+
+  // return loops[1];
 }
-
-
-
 
 static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp, 
     gpu::LaunchOp launchOp) {
@@ -207,6 +240,9 @@ static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp,
       if(accLoopOp.isGang()) { // Map to gang only
         forOp.setLowerBound(launchOp.getBlockIds().x);
         forOp.setStep(launchOp.getGridSize().x);
+      } else if (accLoopOp.isVector()) {
+        forOp.setLowerBound(launchOp.getThreadIds().x);
+        forOp.setStep(launchOp.getBlockSize().x);
       } else {
         // lb = blockIdx.x * blockDim.x + threadIdx.x
         Value tmp = builder.create<MulIOp>(loc, launchOp.getBlockIds().x, 

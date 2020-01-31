@@ -165,6 +165,11 @@ def LoopOp : OpenACC_Op<"loop",
           return static_cast<bool>(gangAttr);
         }
 
+        bool isVector() {
+          UnitAttr vectorAttr = getAttrOfType<UnitAttr>(getVectorAttrName());
+          return static_cast<bool>(vectorAttr);
+        }
+
     }];
 }
 
