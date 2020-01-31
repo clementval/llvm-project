@@ -43,6 +43,7 @@ set(LIBS
   MLIRQuantOps
   MLIRROCDLIR
   MLIRSPIRV
+  MLIRLinalgToSPIRVTransforms
   MLIRStandardToSPIRVTransforms
   MLIRSPIRVTestPasses
   MLIRSPIRVTransforms
