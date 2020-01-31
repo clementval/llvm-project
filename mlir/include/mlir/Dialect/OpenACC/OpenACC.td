@@ -75,32 +75,32 @@ def ParallelOp : OpenACC_Op<"parallel",
 
     let extraClassDeclaration = [{
         Block &getBody() {
-            return this->getOperation()->getRegion(0).front();
+          return this->getOperation()->getRegion(0).front();
         }
 
         /// Returns the name of the attribute containing the number of gangs.
         static StringRef getNumGangsAttrName() {
-            return "num_gangs";
+          return "num_gangs";
         }
 
         /// Returns the name of the attribute containing the number of workers.
         static StringRef getNumWorkersAttrName() {
-            return "num_workers";
+          return "num_workers";
         }
 
         /// Returns the number of gangs defined for the parallel op
         unsigned getNumGangs() {
-            return getAttrOfType<IntegerAttr>(getNumGangsAttrName()) != nullptr 
-                ? getAttrOfType<IntegerAttr>(getNumGangsAttrName()).getInt() 
-                : 1;
+          return getAttrOfType<IntegerAttr>(getNumGangsAttrName()) != nullptr 
+              ? getAttrOfType<IntegerAttr>(getNumGangsAttrName()).getInt() 
+              : 1;
         }
 
         /// Returns the number of workers defined for the parallel op
         unsigned getNumWorkers() {
-            return 
-                getAttrOfType<IntegerAttr>(getNumWorkersAttrName()) != nullptr
-                ? getAttrOfType<IntegerAttr>(getNumWorkersAttrName()).getInt()
-                : 1;
+          return 
+              getAttrOfType<IntegerAttr>(getNumWorkersAttrName()) != nullptr
+              ? getAttrOfType<IntegerAttr>(getNumWorkersAttrName()).getInt()
+              : 1;
         }
     }];
 
@@ -133,9 +133,38 @@ def LoopOp : OpenACC_Op<"loop",
     let hasCanonicalizer = 1;
 
     let extraClassDeclaration = [{
-          Block &getBody() {
-              return this->getOperation()->getRegion(0).front();
-          }
+        Block &getBody() {
+          return this->getOperation()->getRegion(0).front();
+        }
+
+        static StringRef getCollapseAttrName() {
+          return "collapse";
+        }
+
+        static StringRef getGangAttrName() {
+          return "gang";
+        }
+
+        static StringRef getVectorAttrName() {
+          return "vector";
+        }
+
+        bool hasCollapseAttr() {
+            return getAttrOfType<IntegerAttr>(getCollapseAttrName()) != nullptr;
+        }
+
+        unsigned getCollapse() {
+          return 
+              getAttrOfType<IntegerAttr>(getCollapseAttrName()) != nullptr
+              ? getAttrOfType<IntegerAttr>(getCollapseAttrName()).getInt()
+              : 1;
+        }
+        
+        bool isGang() {
+          UnitAttr gangAttr = getAttrOfType<UnitAttr>(getGangAttrName());
+          return static_cast<bool>(gangAttr);
+        }
+
     }];
 }
 

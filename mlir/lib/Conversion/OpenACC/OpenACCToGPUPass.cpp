@@ -144,26 +144,81 @@ static void extractOperationsOutsideOfRegion(StructureOp baseOp,
 //   return outlinedFunc;
 // }
 
+static void
+replaceAllUsesExcept(Value orig, Value replacement,
+                     const SmallPtrSetImpl<Operation *> &exceptions) {
+  for (auto &use : llvm::make_early_inc_range(orig.getUses())) {
+    if (exceptions.count(use.getOwner()) == 0)
+      use.set(replacement);
+  }
+}
+
+// Collapse `n` perfectly nested loops starting at `rootForOp` 
+static loop::ForOp& collapseNestedLoops(loop::ForOp rootForOp, unsigned n) {
+  SmallVector<loop::ForOp, 4> loops;
+  getPerfectlyNestedLoops(loops, rootForOp);
+  if(loops.size() < n) {
+    rootForOp.emitError("Not enough nested loops to collapse");
+    return loops[0];
+  }
+  
+  OpBuilder builder(rootForOp);
+  Location loc(rootForOp.getLoc());
+  builder.setInsertionPointToStart(rootForOp.getBody());
+
+  // Define new loop bounds
+  Value upperBound1 = loops[0].upperBound();
+  Value upperBound2 = loops[1].upperBound();
+  auto upperBound = builder.create<MulIOp>(loc, upperBound1, upperBound2);
+
+  upperBound.getOperation()->moveBefore(rootForOp);
+
+  builder.setInsertionPointToStart(loops[1].getBody());
+  Value innerLoopInductionVar = loops[1].getInductionVar();
+  Value index1 = builder.create<UnsignedDivIOp>(loc, innerLoopInductionVar, upperBound1);
+  Value index2 = builder.create<UnsignedRemIOp>(loc, innerLoopInductionVar, upperBound2);
+  loops[1].setUpperBound(upperBound);
+
+  SmallPtrSet<Operation *, 2> preserve{index1.getDefiningOp(),
+                                       index2.getDefiningOp()};
+  replaceAllUsesExcept(loops[0].getInductionVar(), index1, preserve);
+  replaceAllUsesExcept(loops[1].getInductionVar(), index2, preserve);
+
+  loops[1].getOperation()->moveBefore(rootForOp);
+  rootForOp.erase();
+
+  return loops[1];
+}
+
+
+
 
 static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp, 
     gpu::LaunchOp launchOp) {
   for (auto &op : accLoopOp.getBody().getOperations()) {
     if (auto forOp = dyn_cast<loop::ForOp>(&op)) {
-      // mapLoopToProcessorIds(forOp, numGangs, numWorkers);
+      
 
+      if(accLoopOp.hasCollapseAttr())
+        forOp = collapseNestedLoops(forOp, accLoopOp.getCollapse());
+    
       OpBuilder builder(forOp);
       Location loc(forOp.getLoc());
+      if(accLoopOp.isGang()) { // Map to gang only
+        forOp.setLowerBound(launchOp.getBlockIds().x);
+        forOp.setStep(launchOp.getGridSize().x);
+      } else {
+        // lb = blockIdx.x * blockDim.x + threadIdx.x
+        Value tmp = builder.create<MulIOp>(loc, launchOp.getBlockIds().x, 
+            launchOp.getBlockSize().x);
+        Value lb = builder.create<AddIOp>(loc, tmp, launchOp.getThreadIds().x);
+        forOp.setLowerBound(lb);
 
-      // lb = blockIdx.x * blockDim.x + threadIdx.x
-      Value tmp = builder.create<MulIOp>(loc, launchOp.getBlockIds().x, 
-          launchOp.getBlockSize().x);
-      Value lb = builder.create<AddIOp>(loc, tmp, launchOp.getThreadIds().x);
-      forOp.setLowerBound(lb);
-
-      // step = gridDim.x * blockDim.x 
-      Value step = builder.create<MulIOp>(loc, launchOp.getGridSize().x, 
-          launchOp.getBlockSize().x);
-      forOp.setStep(step);
+        // step = gridDim.x * blockDim.x
+        Value step = builder.create<MulIOp>(loc, launchOp.getGridSize().x, 
+            launchOp.getBlockSize().x);
+        forOp.setStep(step);
+      }
 
       extractRegionBeforeItself(accLoopOp);
       accLoopOp.erase();
@@ -224,8 +279,8 @@ static LogicalResult createGPULaunchForParallelRegion(acc::ParallelOp
   }
 
   // Adapt acc loop in the parallel region
-  parallelOp.walk([&](acc::LoopOp loopOp) {
-    mapParallerLoopToGangWorker(loopOp, launchOp);
+  parallelOp.walk([&](acc::LoopOp accLoopOp) {
+    mapParallerLoopToGangWorker(accLoopOp, launchOp);
   });
 
   extractRegionBeforeItself(parallelOp);
