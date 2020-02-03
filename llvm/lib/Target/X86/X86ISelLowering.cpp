@@ -164,7 +164,7 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
 
   // If we don't have cmpxchg8b(meaing this is a 386/486), limit atomic size to
   // 32 bits so the AtomicExpandPass will expand it so we don't need cmpxchg8b.
-  // FIXME: Should we be limitting the atomic size on other configs? Default is
+  // FIXME: Should we be limiting the atomic size on other configs? Default is
   // 1024.
   if (!Subtarget.hasCmpxchg8b())
     setMaxAtomicSizeInBitsSupported(32);
@@ -2245,34 +2245,23 @@ unsigned X86TargetLowering::getByValTypeAlignment(Type *Ty,
   return Align;
 }
 
-/// Returns the target specific optimal type for load
-/// and store operations as a result of memset, memcpy, and memmove
-/// lowering. If DstAlign is zero that means it's safe to destination
-/// alignment can satisfy any constraint. Similarly if SrcAlign is zero it
-/// means there isn't a need to check it against alignment requirement,
-/// probably because the source does not need to be loaded. If 'IsMemset' is
-/// true, that means it's expanding a memset. If 'ZeroMemset' is true, that
-/// means it's a memset of zero. 'MemcpyStrSrc' indicates whether the memcpy
-/// source is constant so it does not need to be loaded.
 /// It returns EVT::Other if the type should be determined using generic
 /// target-independent logic.
 /// For vector ops we check that the overall size isn't larger than our
 /// preferred vector width.
 EVT X86TargetLowering::getOptimalMemOpType(
-    uint64_t Size, unsigned DstAlign, unsigned SrcAlign, bool IsMemset,
-    bool ZeroMemset, bool MemcpyStrSrc,
-    const AttributeList &FuncAttributes) const {
+    const MemOp &Op, const AttributeList &FuncAttributes) const {
   if (!FuncAttributes.hasFnAttribute(Attribute::NoImplicitFloat)) {
-    if (Size >= 16 && (!Subtarget.isUnalignedMem16Slow() ||
-                       ((DstAlign == 0 || DstAlign >= 16) &&
-                        (SrcAlign == 0 || SrcAlign >= 16)))) {
+    if (Op.Size >= 16 && (!Subtarget.isUnalignedMem16Slow() ||
+                          ((Op.DstAlign == 0 || Op.DstAlign >= 16) &&
+                           (Op.SrcAlign == 0 || Op.SrcAlign >= 16)))) {
       // FIXME: Check if unaligned 64-byte accesses are slow.
-      if (Size >= 64 && Subtarget.hasAVX512() &&
+      if (Op.Size >= 64 && Subtarget.hasAVX512() &&
           (Subtarget.getPreferVectorWidth() >= 512)) {
         return Subtarget.hasBWI() ? MVT::v64i8 : MVT::v16i32;
       }
       // FIXME: Check if unaligned 32-byte accesses are slow.
-      if (Size >= 32 && Subtarget.hasAVX() &&
+      if (Op.Size >= 32 && Subtarget.hasAVX() &&
           (Subtarget.getPreferVectorWidth() >= 256)) {
         // Although this isn't a well-supported type for AVX1, we'll let
         // legalization and shuffle lowering produce the optimal codegen. If we
@@ -2288,8 +2277,8 @@ EVT X86TargetLowering::getOptimalMemOpType(
       if (Subtarget.hasSSE1() && (Subtarget.is64Bit() || Subtarget.hasX87()) &&
           (Subtarget.getPreferVectorWidth() >= 128))
         return MVT::v4f32;
-    } else if ((!IsMemset || ZeroMemset) && !MemcpyStrSrc && Size >= 8 &&
-               !Subtarget.is64Bit() && Subtarget.hasSSE2()) {
+    } else if ((!Op.IsMemset || Op.ZeroMemset) && !Op.MemcpyStrSrc &&
+               Op.Size >= 8 && !Subtarget.is64Bit() && Subtarget.hasSSE2()) {
       // Do not use f64 to lower memcpy if source is string constant. It's
       // better to use i32 to avoid the loads.
       // Also, do not use f64 to lower memset unless this is a memset of zeros.
@@ -2302,7 +2291,7 @@ EVT X86TargetLowering::getOptimalMemOpType(
   // This is a compromise. If we reach here, unaligned accesses may be slow on
   // this target. However, creating smaller, aligned accesses could be even
   // slower and would certainly be a lot more code.
-  if (Subtarget.is64Bit() && Size >= 8)
+  if (Subtarget.is64Bit() && Op.Size >= 8)
     return MVT::i64;
   return MVT::i32;
 }
@@ -4346,7 +4335,7 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 //  (within module) calls are supported at the moment.
 //  To keep the stack aligned according to platform abi the function
 //  GetAlignedArgumentStackSize ensures that argument delta is always multiples
-//  of stack alignment. (Dynamic linkers need this - darwin's dyld for example)
+//  of stack alignment. (Dynamic linkers need this - Darwin's dyld for example)
 //  If a tail called function callee has more arguments than the caller the
 //  caller needs to make sure that there is room to move the RETADDR to. This is
 //  achieved by reserving an area the size of the argument delta right after the
@@ -5734,7 +5723,7 @@ static SDValue widenSubVector(SDValue Vec, bool ZeroNewElements,
   return widenSubVector(VT, Vec, ZeroNewElements, Subtarget, DAG, dl);
 }
 
-// Helper function to collect subvector ops that are concated together,
+// Helper function to collect subvector ops that are concatenated together,
 // either by ISD::CONCAT_VECTORS or a ISD::INSERT_SUBVECTOR series.
 // The subvectors in Ops are guaranteed to be the same type.
 static bool collectConcatOps(SDNode *N, SmallVectorImpl<SDValue> &Ops) {
@@ -5909,7 +5898,7 @@ static SDValue insert1BitVector(SDValue Op, SelectionDAG &DAG,
                          DAG.getTargetConstant(IdxVal, dl, MVT::i8));
     if (SubVecNumElems * 2 == NumElems) {
       // Special case, use legal zero extending insert_subvector. This allows
-      // isel to opimitize when bits are known zero.
+      // isel to optimize when bits are known zero.
       Vec = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, SubVecVT, Vec, ZeroIdx);
       Vec = DAG.getNode(ISD::INSERT_SUBVECTOR, dl, WideOpVT,
                         DAG.getConstant(0, dl, WideOpVT),
@@ -7592,7 +7581,7 @@ static bool getTargetShuffleInputs(SDValue Op, SmallVectorImpl<SDValue> &Inputs,
                                 KnownZero, DAG, Depth, ResolveKnownElts);
 }
 
-/// Returns the scalar element that will make up the ith
+/// Returns the scalar element that will make up the i'th
 /// element of the result of the vector shuffle.
 static SDValue getShuffleScalarElt(SDNode *N, unsigned Index, SelectionDAG &DAG,
                                    unsigned Depth) {
@@ -8448,7 +8437,7 @@ static SDValue lowerBuildVectorAsBroadcast(BuildVectorSDNode *BVOp,
   SDValue Ld = BVOp->getSplatValue(&UndefElements);
 
   // Attempt to use VBROADCASTM
-  // From this paterrn:
+  // From this pattern:
   // a. t0 = (zext_i64 (bitcast_i8 v2i1 X))
   // b. t1 = (build_vector t0 t0)
   //
@@ -19581,7 +19570,7 @@ X86TargetLowering::FP_TO_INTHelper(SDValue Op, SelectionDAG &DAG,
   if (isScalarFPTypeInSSEReg(TheVT)) {
     assert(DstTy == MVT::i64 && "Invalid FP_TO_SINT to lower!");
     Chain = DAG.getStore(Chain, DL, Value, StackSlot, MPI);
-    SDVTList Tys = DAG.getVTList(TheVT, MVT::Other);
+    SDVTList Tys = DAG.getVTList(MVT::f80, MVT::Other);
     SDValue Ops[] = { Chain, StackSlot };
 
     unsigned FLDSize = TheVT.getStoreSize();
@@ -22264,7 +22253,6 @@ SDValue X86TargetLowering::LowerSELECT(SDValue Op, SelectionDAG &DAG) const {
 
       Cmp = DAG.getNode(X86ISD::CMP, DL, MVT::i32,
                         CmpOp0, DAG.getConstant(1, DL, CmpOp0.getValueType()));
-      Cmp = ConvertCmpIfNecessary(Cmp, DAG);
 
       SDVTList VTs = DAG.getVTList(Op.getValueType(), MVT::i32);
       SDValue Zero = DAG.getConstant(0, DL, Op.getValueType());
@@ -22379,7 +22367,6 @@ SDValue X86TargetLowering::LowerSELECT(SDValue Op, SelectionDAG &DAG) const {
   // a >= b ? -1 :  0 -> RES = setcc_carry
   // a >= b ?  0 : -1 -> RES = ~setcc_carry
   if (Cond.getOpcode() == X86ISD::SUB) {
-    Cond = ConvertCmpIfNecessary(Cond, DAG);
     unsigned CondCode = cast<ConstantSDNode>(CC)->getZExtValue();
 
     if ((CondCode == X86::COND_AE || CondCode == X86::COND_B) &&
@@ -36452,7 +36439,14 @@ static SDValue combineBitcastvxi1(SelectionDAG &DAG, EVT VT, SDValue Src,
   case MVT::v64i1:
     // If we have AVX512F, but not AVX512BW and the input is truncated from
     // v64i8 checked earlier. Then split the input and make two pmovmskbs.
-    if (Subtarget.hasAVX512() && !Subtarget.hasBWI()) {
+    if (Subtarget.hasAVX512()) {
+      if (Subtarget.hasBWI())
+        return SDValue();
+      SExtVT = MVT::v64i8;
+      break;
+    }
+    // Split if this is a <64 x i8> comparison result.
+    if (checkBitcastSrcVectorSize(Src, 512)) {
       SExtVT = MVT::v64i8;
       break;
     }
@@ -36640,7 +36634,7 @@ static SDValue combineBitcast(SDNode *N, SelectionDAG &DAG,
     if (SDValue V = combineBitcastvxi1(DAG, VT, N0, dl, Subtarget))
       return V;
 
-    // Recognize the IR pattern for the movmsk intrinsic under SSE1 befoer type
+    // Recognize the IR pattern for the movmsk intrinsic under SSE1 before type
     // legalization destroys the v4i32 type.
     if (Subtarget.hasSSE1() && !Subtarget.hasSSE2() && SrcVT == MVT::v4i1 &&
         VT.isScalarInteger() && N0.getOpcode() == ISD::SETCC &&
