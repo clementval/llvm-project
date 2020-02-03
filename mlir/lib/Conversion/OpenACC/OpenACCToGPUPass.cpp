@@ -233,29 +233,14 @@ static LogicalResult createGPULaunchForParallelRegion(acc::ParallelOp
       loc, builder.getIntegerAttr(builder.getIndexType(), 
       parallelOp.getNumWorkers())) : one;
 
-  llvm::SetVector<Value> valuesToForwardSet;
-  getUsedValuesDefinedAbove(parallelOp.region(), parallelOp.region(), 
-                            valuesToForwardSet);
-  auto valuesToForward = valuesToForwardSet.takeVector();
-
   auto launchOp = builder.create<gpu::LaunchOp>(loc, 
-      numGangs, one, one, numWorkers, one, one, valuesToForward);
+      numGangs, one, one, numWorkers, one, one);
 
   builder.setInsertionPointToEnd(&launchOp.body().front());
   auto gpuTerminatorOp = builder.create<gpu::TerminatorOp>(launchOp.getLoc());
 
-
   // Move parallel body into launchOp
   parallelOp.getOperation()->moveBefore(gpuTerminatorOp);
-  
-  // Replace values that are used within the region of the launchOp but are
-  // defined outside. They all are replaced with kernel arguments.
-  for (auto pair :
-       llvm::zip_first(valuesToForward, launchOp.getKernelArguments())) {
-    Value from = std::get<0>(pair);
-    Value to = std::get<1>(pair);
-    replaceAllUsesInRegionWith(from, to, launchOp.body());
-  }
 
   // Adapt acc loop in the parallel region
   parallelOp.walk([&](acc::LoopOp accLoopOp) {
