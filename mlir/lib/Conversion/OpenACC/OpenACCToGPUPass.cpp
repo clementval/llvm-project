@@ -202,8 +202,8 @@ static LogicalResult createGPULaunchForParallelRegion(acc::ParallelOp
       loc, builder.getIntegerAttr(builder.getIndexType(), 
       parallelOp.getNumWorkers())) : one;
 
-  auto launchOp = builder.create<gpu::LaunchOp>(loc, 
-      numGangs, one, one, numWorkers, one, one);
+  auto launchOp = builder.create<gpu::LaunchOp>(loc, numGangs, one, one,
+      numWorkers, one, one);
 
   builder.setInsertionPointToEnd(&launchOp.body().front());
   auto gpuTerminatorOp = builder.create<gpu::TerminatorOp>(launchOp.getLoc());
