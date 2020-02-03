@@ -145,6 +145,10 @@ def LoopOp : OpenACC_Op<"loop",
           return "gang";
         }
 
+        static StringRef getSeqAttrName() {
+          return "seq";
+        }
+
         static StringRef getVectorAttrName() {
           return "vector";
         }
@@ -168,6 +172,11 @@ def LoopOp : OpenACC_Op<"loop",
         bool isVector() {
           UnitAttr vectorAttr = getAttrOfType<UnitAttr>(getVectorAttrName());
           return static_cast<bool>(vectorAttr);
+        }
+
+        bool hasSeqAttr() {
+          UnitAttr seqAttr = getAttrOfType<UnitAttr>(getSeqAttrName());
+          return static_cast<bool>(seqAttr);
         }
 
     }];
