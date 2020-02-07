@@ -2290,29 +2290,34 @@ ParmVarDecl *Sema::SubstParmVarDecl(ParmVarDecl *OldParm,
   if (TemplateTypeParmDecl *TTP =
           GetContainedInventedTypeParmVisitor().Visit(OldDI->getType())) {
     if (const TypeConstraint *TC = TTP->getTypeConstraint()) {
-      // TODO: Concepts: do not instantiate the constraint (delayed constraint
-      // substitution)
-      const ASTTemplateArgumentListInfo *TemplArgInfo
-        = TC->getTemplateArgsAsWritten();
-      TemplateArgumentListInfo InstArgs;
+      auto *Inst = cast_or_null<TemplateTypeParmDecl>(
+          FindInstantiatedDecl(TTP->getLocation(), TTP, TemplateArgs));
+      // We will first get here when instantiating the abbreviated function
+      // template's described function, but we might also get here later.
+      // Make sure we do not instantiate the TypeConstraint more than once.
+      if (Inst && !Inst->getTypeConstraint()) {
+        // TODO: Concepts: do not instantiate the constraint (delayed constraint
+        // substitution)
+        const ASTTemplateArgumentListInfo *TemplArgInfo
+          = TC->getTemplateArgsAsWritten();
+        TemplateArgumentListInfo InstArgs;
 
-      if (TemplArgInfo) {
-        InstArgs.setLAngleLoc(TemplArgInfo->LAngleLoc);
-        InstArgs.setRAngleLoc(TemplArgInfo->RAngleLoc);
-        if (Subst(TemplArgInfo->getTemplateArgs(),
-                  TemplArgInfo->NumTemplateArgs, InstArgs, TemplateArgs))
+        if (TemplArgInfo) {
+          InstArgs.setLAngleLoc(TemplArgInfo->LAngleLoc);
+          InstArgs.setRAngleLoc(TemplArgInfo->RAngleLoc);
+          if (Subst(TemplArgInfo->getTemplateArgs(),
+                    TemplArgInfo->NumTemplateArgs, InstArgs, TemplateArgs))
+            return nullptr;
+        }
+        if (AttachTypeConstraint(
+                TC->getNestedNameSpecifierLoc(), TC->getConceptNameInfo(),
+                TC->getNamedConcept(), &InstArgs, Inst,
+                TTP->isParameterPack()
+                    ? cast<CXXFoldExpr>(TC->getImmediatelyDeclaredConstraint())
+                        ->getEllipsisLoc()
+                    : SourceLocation()))
           return nullptr;
       }
-      auto *Inst = cast<TemplateTypeParmDecl>(
-          FindInstantiatedDecl(TTP->getLocation(), TTP, TemplateArgs));
-      if (AttachTypeConstraint(
-              TC->getNestedNameSpecifierLoc(), TC->getConceptNameInfo(),
-              TC->getNamedConcept(), &InstArgs, Inst,
-              TTP->isParameterPack()
-                  ? cast<CXXFoldExpr>(TC->getImmediatelyDeclaredConstraint())
-                      ->getEllipsisLoc()
-                  : SourceLocation()))
-        return nullptr;
     }
   }
 

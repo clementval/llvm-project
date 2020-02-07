@@ -1260,8 +1260,6 @@ void DwarfDebug::endModule() {
   // Finalize the debug info for the module.
   finalizeModuleInfo();
 
-  emitDebugStr();
-
   if (useSplitDwarf())
     // Emit debug_loc.dwo/debug_loclists.dwo section.
     emitDebugLocDWO();
@@ -1288,6 +1286,8 @@ void DwarfDebug::endModule() {
   else
   // Emit info into a debug macinfo section.
     emitDebugMacinfo();
+
+  emitDebugStr();
 
   if (useSplitDwarf()) {
     emitDebugStrDWO();
@@ -2238,15 +2238,10 @@ void DwarfDebug::emitDebugLocEntry(ByteStreamer &Streamer,
       if (Op.getDescription().Op[I] == Encoding::SizeNA)
         continue;
       if (Op.getDescription().Op[I] == Encoding::BaseTypeRef) {
-        if (CU) {
-          uint64_t Offset =
-              CU->ExprRefedBaseTypes[Op.getRawOperand(I)].Die->getOffset();
-          assert(Offset < (1ULL << (ULEB128PadSize * 7)) && "Offset wont fit");
-          Asm->EmitULEB128(Offset, nullptr, ULEB128PadSize);
-        } else {
-          // Emit a reference to the 'generic type'.
-          Asm->EmitULEB128(0, nullptr, ULEB128PadSize);
-        }
+        uint64_t Offset =
+            CU->ExprRefedBaseTypes[Op.getRawOperand(I)].Die->getOffset();
+        assert(Offset < (1ULL << (ULEB128PadSize * 7)) && "Offset wont fit");
+        Streamer.EmitULEB128(Offset, "", ULEB128PadSize);
         // Make sure comments stay aligned.
         for (unsigned J = 0; J < ULEB128PadSize; ++J)
           if (Comment != End)

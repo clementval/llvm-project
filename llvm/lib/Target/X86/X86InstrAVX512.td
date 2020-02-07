@@ -7233,6 +7233,45 @@ defm VCVTSD2USI64Z: avx512_cvt_s_int_round<0x79, f64x_info, i64x_info, X86cvts2u
                                    X86cvts2usiRnd, WriteCvtSD2I, "cvtsd2usi", "{q}">,
                                    XD, VEX_W, EVEX_CD8<64, CD8VT1>;
 
+multiclass avx512_cvt_s<bits<8> opc, string asm, X86VectorVTInfo SrcVT,
+                        X86VectorVTInfo DstVT, SDNode OpNode,
+                        X86FoldableSchedWrite sched,
+                        string aliasStr> {
+  let Predicates = [HasAVX512], ExeDomain = SrcVT.ExeDomain in {
+    let isCodeGenOnly = 1 in {
+    def rr : AVX512<opc, MRMSrcReg, (outs DstVT.RC:$dst), (ins SrcVT.FRC:$src),
+                !strconcat(asm,"\t{$src, $dst|$dst, $src}"),
+                [(set DstVT.RC:$dst, (OpNode SrcVT.FRC:$src))]>,
+                EVEX, VEX_LIG, Sched<[sched]>, SIMD_EXC;
+    def rm : AVX512<opc, MRMSrcMem, (outs DstVT.RC:$dst), (ins SrcVT.ScalarMemOp:$src),
+                !strconcat(asm,"\t{$src, $dst|$dst, $src}"),
+                [(set DstVT.RC:$dst, (OpNode (SrcVT.ScalarLdFrag addr:$src)))]>,
+                EVEX, VEX_LIG, Sched<[sched.Folded, sched.ReadAfterFold]>, SIMD_EXC;
+    }
+  } // Predicates = [HasAVX512]
+}
+
+defm VCVTSS2SIZ: avx512_cvt_s<0x2D, "vcvtss2si", f32x_info, i32x_info,
+                       lrint, WriteCvtSS2I,
+                       "{l}">, XS, EVEX_CD8<32, CD8VT1>;
+defm VCVTSS2SI64Z: avx512_cvt_s<0x2D, "vcvtss2si", f32x_info, i64x_info,
+                       llrint, WriteCvtSS2I,
+                       "{q}">, VEX_W, XS, EVEX_CD8<32, CD8VT1>;
+defm VCVTSD2SIZ: avx512_cvt_s<0x2D, "vcvtsd2si", f64x_info, i32x_info,
+                       lrint, WriteCvtSD2I,
+                       "{l}">, XD, EVEX_CD8<64, CD8VT1>;
+defm VCVTSD2SI64Z: avx512_cvt_s<0x2D, "vcvtsd2si", f64x_info, i64x_info,
+                       llrint, WriteCvtSD2I,
+                       "{q}">, VEX_W, XD, EVEX_CD8<64, CD8VT1>;
+
+let Predicates = [HasAVX512] in {
+  def : Pat<(i64 (lrint FR32:$src)), (VCVTSS2SI64Zrr FR32:$src)>;
+  def : Pat<(i64 (lrint (loadf32 addr:$src))), (VCVTSS2SI64Zrm addr:$src)>;
+
+  def : Pat<(i64 (lrint FR64:$src)), (VCVTSD2SI64Zrr FR64:$src)>;
+  def : Pat<(i64 (lrint (loadf64 addr:$src))), (VCVTSD2SI64Zrm addr:$src)>;
+}
+
 // Patterns used for matching vcvtsi2s{s,d} intrinsic sequences from clang
 // which produce unnecessary vmovs{s,d} instructions
 let Predicates = [HasAVX512] in {
@@ -9765,10 +9804,6 @@ def rr : AVX512XS8I<opc, MRMSrcReg, (outs Vec.RC:$dst), (ins Vec.KRC:$src),
                   !strconcat(OpcodeStr##Vec.Suffix, "\t{$src, $dst|$dst, $src}"),
                   [(set Vec.RC:$dst, (Vec.VT (sext Vec.KRC:$src)))]>,
                   EVEX, Sched<[WriteMove]>; // TODO - WriteVecTrunc?
-
-// Also need a pattern for anyextend.
-def : Pat<(Vec.VT (anyext Vec.KRC:$src)),
-          (!cast<Instruction>(NAME#"rr") Vec.KRC:$src)>;
 }
 
 multiclass cvt_mask_by_elt_width<bits<8> opc, AVX512VLVectorVTInfo VTInfo,
@@ -9842,18 +9877,10 @@ let Predicates = [HasDQI, NoBWI] in {
             (VPMOVDBZrr (v16i32 (VPMOVM2DZrr VK16:$src)))>;
   def : Pat<(v16i16 (sext (v16i1 VK16:$src))),
             (VPMOVDWZrr (v16i32 (VPMOVM2DZrr VK16:$src)))>;
-
-  def : Pat<(v16i8 (anyext (v16i1 VK16:$src))),
-            (VPMOVDBZrr (v16i32 (VPMOVM2DZrr VK16:$src)))>;
-  def : Pat<(v16i16 (anyext (v16i1 VK16:$src))),
-            (VPMOVDWZrr (v16i32 (VPMOVM2DZrr VK16:$src)))>;
 }
 
 let Predicates = [HasDQI, NoBWI, HasVLX] in {
   def : Pat<(v8i16 (sext (v8i1 VK8:$src))),
-            (VPMOVDWZ256rr (v8i32 (VPMOVM2DZ256rr VK8:$src)))>;
-
-  def : Pat<(v8i16 (anyext (v8i1 VK8:$src))),
             (VPMOVDWZ256rr (v8i32 (VPMOVM2DZ256rr VK8:$src)))>;
 }
 

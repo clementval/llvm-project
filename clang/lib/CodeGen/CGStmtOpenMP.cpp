@@ -21,6 +21,7 @@
 #include "clang/AST/OpenMPClause.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtOpenMP.h"
+#include "clang/Basic/OpenMPKinds.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "llvm/Frontend/OpenMP/OMPIRBuilder.h"
 using namespace clang;
@@ -1931,6 +1932,9 @@ void CodeGenFunction::EmitOMPSimdInit(const OMPLoopDirective &D,
   LoopStack.setParallel(!IsMonotonic);
   LoopStack.setVectorizeEnable();
   emitSimdlenSafelenClause(*this, D, IsMonotonic);
+  if (const auto *C = D.getSingleClause<OMPOrderClause>())
+    if (C->getKind() == OMPC_ORDER_concurrent)
+      LoopStack.setParallel(/*Enable=*/true);
 }
 
 void CodeGenFunction::EmitOMPSimdFinal(
@@ -2202,10 +2206,14 @@ void CodeGenFunction::EmitOMPOuterLoop(
       [&S, IsMonotonic](CodeGenFunction &CGF, PrePostActionTy &) {
         // Generate !llvm.loop.parallel metadata for loads and stores for loops
         // with dynamic/guided scheduling and without ordered clause.
-        if (!isOpenMPSimdDirective(S.getDirectiveKind()))
+        if (!isOpenMPSimdDirective(S.getDirectiveKind())) {
           CGF.LoopStack.setParallel(!IsMonotonic);
-        else
+          if (const auto *C = S.getSingleClause<OMPOrderClause>())
+            if (C->getKind() == OMPC_ORDER_concurrent)
+              CGF.LoopStack.setParallel(/*Enable=*/true);
+        } else {
           CGF.EmitOMPSimdInit(S, IsMonotonic);
+        }
       },
       [&S, &LoopArgs, LoopExit, &CodeGenLoop, IVSize, IVSigned, &CodeGenOrdered,
        &LoopScope](CodeGenFunction &CGF, PrePostActionTy &) {
@@ -2720,8 +2728,12 @@ bool CodeGenFunction::EmitOMPWorksharingLoop(
         emitCommonSimdLoop(
             *this, S,
             [&S](CodeGenFunction &CGF, PrePostActionTy &) {
-              if (isOpenMPSimdDirective(S.getDirectiveKind()))
+              if (isOpenMPSimdDirective(S.getDirectiveKind())) {
                 CGF.EmitOMPSimdInit(S, /*IsMonotonic=*/true);
+              } else if (const auto *C = S.getSingleClause<OMPOrderClause>()) {
+                if (C->getKind() == OMPC_ORDER_concurrent)
+                  CGF.LoopStack.setParallel(/*Enable=*/true);
+              }
             },
             [IVSize, IVSigned, Ordered, IL, LB, UB, ST, StaticChunkedOne, Chunk,
              &S, ScheduleKind, LoopExit,
@@ -4423,6 +4435,7 @@ static void emitOMPAtomicExpr(CodeGenFunction &CGF, OpenMPClauseKind Kind,
   case OMPC_collapse:
   case OMPC_default:
   case OMPC_seq_cst:
+  case OMPC_acq_rel:
   case OMPC_shared:
   case OMPC_linear:
   case OMPC_aligned:
@@ -4463,6 +4476,7 @@ static void emitOMPAtomicExpr(CodeGenFunction &CGF, OpenMPClauseKind Kind,
   case OMPC_device_type:
   case OMPC_match:
   case OMPC_nontemporal:
+  case OMPC_order:
     llvm_unreachable("Clause is not allowed in 'omp atomic'.");
   }
 }
@@ -4471,8 +4485,9 @@ void CodeGenFunction::EmitOMPAtomicDirective(const OMPAtomicDirective &S) {
   bool IsSeqCst = S.getSingleClause<OMPSeqCstClause>();
   OpenMPClauseKind Kind = OMPC_unknown;
   for (const OMPClause *C : S.clauses()) {
-    // Find first clause (skip seq_cst clause, if it is first).
-    if (C->getClauseKind() != OMPC_seq_cst) {
+    // Find first clause (skip seq_cst|acq_rel clause, if it is first).
+    if (C->getClauseKind() != OMPC_seq_cst &&
+        C->getClauseKind() != OMPC_acq_rel) {
       Kind = C->getClauseKind();
       break;
     }

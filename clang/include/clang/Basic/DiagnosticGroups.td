@@ -1168,17 +1168,17 @@ the token limit, which can be set in three ways:
    .. code-block: c++
       #pragma clang max_tokens_here 1234
 
-2. As a per-translation unit limit, using the ``-fmax-tokens`` command-line
+2. As a per-translation unit limit, using the ``-fmax-tokens=`` command-line
    flag:
 
    .. code-block: console
-      clang -c a.cpp -fmax-tokens 1234
+      clang -c a.cpp -fmax-tokens=1234
 
 3. As a per-translation unit limit using the ``clang max_tokens_total`` pragma,
-   which works like and overrides the ``-fmax-tokens`` flag:
+   which works like and overrides the ``-fmax-tokens=`` flag:
 
    .. code-block: c++
-      #pragma clang max_file_tokens 1234
+      #pragma clang max_tokens_total 1234
 
 These limits can be helpful in limiting code growth through included files.
 

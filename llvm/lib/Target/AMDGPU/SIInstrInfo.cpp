@@ -331,26 +331,26 @@ bool SIInstrInfo::getMemOperandsWithOffset(
 
       const MachineOperand *OffsetImm =
         getNamedOperand(LdSt, AMDGPU::OpName::offset);
+      BaseOps.push_back(RSrc);
       BaseOps.push_back(SOffset);
       Offset = OffsetImm->getImm();
       return true;
     }
 
-    const MachineOperand *AddrReg = getNamedOperand(LdSt, AMDGPU::OpName::vaddr);
-    if (!AddrReg)
+    BaseOp = getNamedOperand(LdSt, AMDGPU::OpName::srsrc);
+    if (!BaseOp) // e.g. BUFFER_WBINVL1_VOL
       return false;
+    BaseOps.push_back(BaseOp);
+
+    BaseOp = getNamedOperand(LdSt, AMDGPU::OpName::vaddr);
+    if (BaseOp)
+      BaseOps.push_back(BaseOp);
 
     const MachineOperand *OffsetImm =
         getNamedOperand(LdSt, AMDGPU::OpName::offset);
-    BaseOp = AddrReg;
     Offset = OffsetImm->getImm();
     if (SOffset) // soffset can be an inline immediate.
       Offset += SOffset->getImm();
-
-    if (!BaseOp->isReg())
-      return false;
-
-    BaseOps.push_back(BaseOp);
     return true;
   }
 
@@ -798,7 +798,7 @@ void SIInstrInfo::materializeImmediate(MachineBasicBlock &MBB,
     int64_t IdxValue = Idx == 0 ? Value : 0;
 
     MachineInstrBuilder Builder = BuildMI(MBB, MI, DL,
-      get(Opcode), RI.getSubReg(DestReg, Idx));
+      get(Opcode), RI.getSubReg(DestReg, SubIndices[Idx]));
     Builder.addImm(IdxValue);
   }
 }

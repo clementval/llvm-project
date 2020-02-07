@@ -167,10 +167,10 @@ static SDValue CreateCopyOfByValArgument(SDValue Src, SDValue Dst,
                                          SDValue Chain, ISD::ArgFlagsTy Flags,
                                          SelectionDAG &DAG, const SDLoc &dl) {
   SDValue SizeNode = DAG.getConstant(Flags.getByValSize(), dl, MVT::i32);
-  return DAG.getMemcpy(Chain, dl, Dst, Src, SizeNode, Flags.getByValAlign(),
-                       /*isVolatile=*/false, /*AlwaysInline=*/false,
-                       /*isTailCall=*/false,
-                       MachinePointerInfo(), MachinePointerInfo());
+  return DAG.getMemcpy(
+      Chain, dl, Dst, Src, SizeNode, Flags.getNonZeroByValAlign(),
+      /*isVolatile=*/false, /*AlwaysInline=*/false,
+      /*isTailCall=*/false, MachinePointerInfo(), MachinePointerInfo());
 }
 
 bool
@@ -993,10 +993,9 @@ HexagonTargetLowering::LowerVACOPY(SDValue Op, SelectionDAG &DAG) const {
   // Size of the va_list is 12 bytes as it has 3 pointers. Therefore,
   // we need to memcopy 12 bytes from va_list to another similar list.
   return DAG.getMemcpy(Chain, DL, DestPtr, SrcPtr,
-                       DAG.getIntPtrConstant(12, DL), 4, /*isVolatile*/false,
-                       false, false,
+                       DAG.getIntPtrConstant(12, DL), Align(4),
+                       /*isVolatile*/ false, false, false,
                        MachinePointerInfo(DestSV), MachinePointerInfo(SrcSV));
-
 }
 
 SDValue HexagonTargetLowering::LowerSETCC(SDValue Op, SelectionDAG &DAG) const {
@@ -3381,21 +3380,12 @@ bool HexagonTargetLowering::IsEligibleForTailCallOptimization(
 /// determined using generic target-independent logic.
 EVT HexagonTargetLowering::getOptimalMemOpType(
     const MemOp &Op, const AttributeList &FuncAttributes) const {
-
-  auto Aligned = [](unsigned GivenA, unsigned MinA) -> bool {
-    return (GivenA % MinA) == 0;
-  };
-
-  if (Op.Size >= 8 && Aligned(Op.DstAlign, 8) &&
-      (Op.IsMemset || Aligned(Op.SrcAlign, 8)))
+  if (Op.size() >= 8 && Op.isAligned(Align(8)))
     return MVT::i64;
-  if (Op.Size >= 4 && Aligned(Op.DstAlign, 4) &&
-      (Op.IsMemset || Aligned(Op.SrcAlign, 4)))
+  if (Op.size() >= 4 && Op.isAligned(Align(4)))
     return MVT::i32;
-  if (Op.Size >= 2 && Aligned(Op.DstAlign, 2) &&
-      (Op.IsMemset || Aligned(Op.SrcAlign, 2)))
+  if (Op.size() >= 2 && Op.isAligned(Align(2)))
     return MVT::i16;
-
   return MVT::Other;
 }
 
