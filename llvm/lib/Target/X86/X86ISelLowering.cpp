@@ -7443,6 +7443,24 @@ static bool getFauxShuffleMask(SDValue N, const APInt &DemandedElts,
     }
     return true;
   }
+  case X86ISD::VROTLI:
+  case X86ISD::VROTRI: {
+    // We can only decode 'whole byte' bit rotates as shuffles.
+    uint64_t RotateVal = N.getConstantOperandAPInt(1).urem(NumBitsPerElt);
+    if ((RotateVal % 8) != 0)
+      return false;
+    Ops.push_back(N.getOperand(0));
+    int NumBytesPerElt = NumBitsPerElt / 8;
+    int Offset = RotateVal / 8;
+    Offset = (X86ISD::VROTLI == Opcode ? NumBytesPerElt - Offset : Offset);
+    for (int i = 0; i != (int)NumElts; ++i) {
+      int BaseIdx = i * NumBytesPerElt;
+      for (int j = 0; j != NumBytesPerElt; ++j) {
+        Mask.push_back(BaseIdx + ((Offset + j) % NumBytesPerElt));
+      }
+    }
+    return true;
+  }
   case X86ISD::VBROADCAST: {
     SDValue Src = N.getOperand(0);
     MVT SrcVT = Src.getSimpleValueType();
@@ -11647,10 +11665,11 @@ static SDValue lowerShuffleAsDecomposedShuffleBlend(
   return DAG.getVectorShuffle(VT, DL, V1, V2, BlendMask);
 }
 
-/// Try to lower a vector shuffle as a rotation.
+/// Try to lower a vector shuffle as a byte rotation.
 ///
 /// This is used for support PALIGNR for SSSE3 or VALIGND/Q for AVX512.
-static int matchShuffleAsRotate(SDValue &V1, SDValue &V2, ArrayRef<int> Mask) {
+static int matchShuffleAsByteRotate(SDValue &V1, SDValue &V2,
+                                    ArrayRef<int> Mask) {
   int NumElts = Mask.size();
 
   // We need to detect various ways of spelling a rotation:
@@ -11745,7 +11764,7 @@ static int matchShuffleAsByteRotate(MVT VT, SDValue &V1, SDValue &V2,
   if (!is128BitLaneRepeatedShuffleMask(VT, Mask, RepeatedMask))
     return -1;
 
-  int Rotation = matchShuffleAsRotate(V1, V2, RepeatedMask);
+  int Rotation = matchShuffleAsByteRotate(V1, V2, RepeatedMask);
   if (Rotation <= 0)
     return -1;
 
@@ -11825,7 +11844,7 @@ static SDValue lowerShuffleAsVALIGN(const SDLoc &DL, MVT VT, SDValue V1,
          && "VLX required for 128/256-bit vectors");
 
   SDValue Lo = V1, Hi = V2;
-  int Rotation = matchShuffleAsRotate(Lo, Hi, Mask);
+  int Rotation = matchShuffleAsByteRotate(Lo, Hi, Mask);
   if (Rotation <= 0)
     return SDValue();
 
@@ -16100,13 +16119,14 @@ static SDValue lowerV8F32Shuffle(const SDLoc &DL, ArrayRef<int> Mask,
   // If we have a single input shuffle with different shuffle patterns in the
   // two 128-bit lanes use the variable mask to VPERMILPS.
   if (V2.isUndef()) {
-    SDValue VPermMask = getConstVector(Mask, MVT::v8i32, DAG, DL, true);
-    if (!is128BitLaneCrossingShuffleMask(MVT::v8f32, Mask))
+    if (!is128BitLaneCrossingShuffleMask(MVT::v8f32, Mask)) {
+      SDValue VPermMask = getConstVector(Mask, MVT::v8i32, DAG, DL, true);
       return DAG.getNode(X86ISD::VPERMILPV, DL, MVT::v8f32, V1, VPermMask);
-
-    if (Subtarget.hasAVX2())
+    }
+    if (Subtarget.hasAVX2()) {
+      SDValue VPermMask = getConstVector(Mask, MVT::v8i32, DAG, DL, true);
       return DAG.getNode(X86ISD::VPERMV, DL, MVT::v8f32, VPermMask, V1);
-
+    }
     // Otherwise, fall back.
     return lowerShuffleAsLanePermuteAndShuffle(DL, MVT::v8f32, V1, V2, Mask,
                                                DAG, Subtarget);
@@ -16404,7 +16424,7 @@ static SDValue lowerV32I8Shuffle(const SDLoc &DL, ArrayRef<int> Mask,
 
   // Try to use shift instructions.
   if (SDValue Shift = lowerShuffleAsShift(DL, MVT::v32i8, V1, V2, Mask,
-                                                Zeroable, Subtarget, DAG))
+                                          Zeroable, Subtarget, DAG))
     return Shift;
 
   // Try to use byte rotation instructions.
@@ -17894,11 +17914,22 @@ SDValue X86TargetLowering::LowerINSERT_VECTOR_ELT(SDValue Op,
   assert(VT.is128BitVector() && "Only 128-bit vector types should be left!");
 
   // This will be just movd/movq/movss/movsd.
-  if (IdxVal == 0 && ISD::isBuildVectorAllZeros(N0.getNode()) &&
-      (EltVT == MVT::i32 || EltVT == MVT::f32 || EltVT == MVT::f64 ||
-       EltVT == MVT::i64)) {
-    N1 = DAG.getNode(ISD::SCALAR_TO_VECTOR, dl, VT, N1);
-    return getShuffleVectorZeroOrUndef(N1, 0, true, Subtarget, DAG);
+  if (IdxVal == 0 && ISD::isBuildVectorAllZeros(N0.getNode())) {
+    if (EltVT == MVT::i32 || EltVT == MVT::f32 || EltVT == MVT::f64 ||
+        EltVT == MVT::i64) {
+      N1 = DAG.getNode(ISD::SCALAR_TO_VECTOR, dl, VT, N1);
+      return getShuffleVectorZeroOrUndef(N1, 0, true, Subtarget, DAG);
+    }
+
+    // We can't directly insert an i8 or i16 into a vector, so zero extend
+    // it to i32 first.
+    if (EltVT == MVT::i16 || EltVT == MVT::i8) {
+      N1 = DAG.getNode(ISD::ZERO_EXTEND, dl, MVT::i32, N1);
+      MVT ShufVT = MVT::getVectorVT(MVT::i32, VT.getSizeInBits()/32);
+      N1 = DAG.getNode(ISD::SCALAR_TO_VECTOR, dl, ShufVT, N1);
+      N1 = getShuffleVectorZeroOrUndef(N1, 0, true, Subtarget, DAG);
+      return DAG.getBitcast(VT, N1);
+    }
   }
 
   // Transform it so it match pinsr{b,w} which expects a GR32 as its second
@@ -23110,9 +23141,9 @@ X86TargetLowering::LowerDYNAMIC_STACKALLOC(SDValue Op,
                                            SelectionDAG &DAG) const {
   MachineFunction &MF = DAG.getMachineFunction();
   bool SplitStack = MF.shouldSplitStack();
-  bool EmitStackProbe = !getStackProbeSymbolName(MF).empty();
+  bool EmitStackProbeCall = hasStackProbeSymbol(MF);
   bool Lower = (Subtarget.isOSWindows() && !Subtarget.isTargetMachO()) ||
-               SplitStack || EmitStackProbe;
+               SplitStack || EmitStackProbeCall;
   SDLoc dl(Op);
 
   // Get the inputs.
@@ -23136,11 +23167,21 @@ X86TargetLowering::LowerDYNAMIC_STACKALLOC(SDValue Op,
     assert(SPReg && "Target cannot require DYNAMIC_STACKALLOC expansion and"
                     " not tell us which reg is the stack pointer!");
 
-    SDValue SP = DAG.getCopyFromReg(Chain, dl, SPReg, VT);
-    Chain = SP.getValue(1);
     const TargetFrameLowering &TFI = *Subtarget.getFrameLowering();
     const Align StackAlign(TFI.getStackAlignment());
-    Result = DAG.getNode(ISD::SUB, dl, VT, SP, Size); // Value
+    if (hasInlineStackProbe(MF)) {
+      MachineRegisterInfo &MRI = MF.getRegInfo();
+
+      const TargetRegisterClass *AddrRegClass = getRegClassFor(SPTy);
+      Register Vreg = MRI.createVirtualRegister(AddrRegClass);
+      Chain = DAG.getCopyToReg(Chain, dl, Vreg, Size);
+      Result = DAG.getNode(X86ISD::PROBED_ALLOCA, dl, SPTy, Chain,
+                           DAG.getRegister(Vreg, SPTy));
+    } else {
+      SDValue SP = DAG.getCopyFromReg(Chain, dl, SPReg, VT);
+      Chain = SP.getValue(1);
+      Result = DAG.getNode(ISD::SUB, dl, VT, SP, Size); // Value
+    }
     if (Alignment && Alignment > StackAlign)
       Result =
           DAG.getNode(ISD::AND, dl, VT, Result,
@@ -28860,8 +28901,7 @@ void X86TargetLowering::ReplaceNodeResults(SDNode *N,
                      SDValue(Lo.getNode(), 1));
     Hi = DAG.getNode(ISD::XOR, dl, HalfT, Tmp, Hi);
     Lo = DAG.getNode(ISD::XOR, dl, HalfT, Tmp, Lo);
-    Results.push_back(Lo);
-    Results.push_back(Hi);
+    Results.push_back(DAG.getNode(ISD::BUILD_PAIR, dl, MVT::i64, Lo, Hi));
     return;
   }
   // We might have generated v2f32 FMIN/FMAX operations. Widen them to v4f32.
@@ -29873,6 +29913,7 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   NODE_NAME_CASE(MEMBARRIER)
   NODE_NAME_CASE(MFENCE)
   NODE_NAME_CASE(SEG_ALLOCA)
+  NODE_NAME_CASE(PROBED_ALLOCA)
   NODE_NAME_CASE(RDRAND)
   NODE_NAME_CASE(RDSEED)
   NODE_NAME_CASE(RDPKRU)
@@ -31141,6 +31182,97 @@ X86TargetLowering::EmitLoweredSelect(MachineInstr &MI,
 }
 
 MachineBasicBlock *
+X86TargetLowering::EmitLoweredProbedAlloca(MachineInstr &MI,
+                                           MachineBasicBlock *BB) const {
+  MachineFunction *MF = BB->getParent();
+  const TargetInstrInfo *TII = Subtarget.getInstrInfo();
+  const X86FrameLowering &TFI = *Subtarget.getFrameLowering();
+  DebugLoc DL = MI.getDebugLoc();
+  const BasicBlock *LLVM_BB = BB->getBasicBlock();
+
+  const unsigned ProbeSize = getStackProbeSize(*MF);
+
+  MachineRegisterInfo &MRI = MF->getRegInfo();
+  MachineBasicBlock *testMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *tailMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *blockMBB = MF->CreateMachineBasicBlock(LLVM_BB);
+
+  MachineFunction::iterator MBBIter = ++BB->getIterator();
+  MF->insert(MBBIter, testMBB);
+  MF->insert(MBBIter, blockMBB);
+  MF->insert(MBBIter, tailMBB);
+
+  unsigned sizeVReg = MI.getOperand(1).getReg();
+
+  const TargetRegisterClass *SizeRegClass = MRI.getRegClass(sizeVReg);
+
+  unsigned tmpSizeVReg = MRI.createVirtualRegister(SizeRegClass);
+  unsigned tmpSizeVReg2 = MRI.createVirtualRegister(SizeRegClass);
+
+  unsigned physSPReg = TFI.Uses64BitFramePtr ? X86::RSP : X86::ESP;
+
+  // test rsp size
+  BuildMI(testMBB, DL, TII->get(X86::PHI), tmpSizeVReg)
+      .addReg(sizeVReg)
+      .addMBB(BB)
+      .addReg(tmpSizeVReg2)
+      .addMBB(blockMBB);
+
+  BuildMI(testMBB, DL,
+          TII->get(TFI.Uses64BitFramePtr ? X86::CMP64ri32 : X86::CMP32ri))
+      .addReg(tmpSizeVReg)
+      .addImm(ProbeSize);
+
+  BuildMI(testMBB, DL, TII->get(X86::JCC_1))
+      .addMBB(tailMBB)
+      .addImm(X86::COND_L);
+  testMBB->addSuccessor(blockMBB);
+  testMBB->addSuccessor(tailMBB);
+
+  // allocate a block and touch it
+
+  BuildMI(blockMBB, DL,
+          TII->get(TFI.Uses64BitFramePtr ? X86::SUB64ri32 : X86::SUB32ri),
+          tmpSizeVReg2)
+      .addReg(tmpSizeVReg)
+      .addImm(ProbeSize);
+
+  BuildMI(blockMBB, DL,
+          TII->get(TFI.Uses64BitFramePtr ? X86::SUB64ri32 : X86::SUB32ri),
+          physSPReg)
+      .addReg(physSPReg)
+      .addImm(ProbeSize);
+
+  const unsigned MovMIOpc =
+      TFI.Uses64BitFramePtr ? X86::MOV64mi32 : X86::MOV32mi;
+  addRegOffset(BuildMI(blockMBB, DL, TII->get(MovMIOpc)), physSPReg, false, 0)
+      .addImm(0);
+
+  BuildMI(blockMBB, DL, TII->get(X86::JMP_1)).addMBB(testMBB);
+  blockMBB->addSuccessor(testMBB);
+
+  // allocate the tail and continue
+  BuildMI(tailMBB, DL,
+          TII->get(TFI.Uses64BitFramePtr ? X86::SUB64rr : X86::SUB32rr),
+          physSPReg)
+      .addReg(physSPReg)
+      .addReg(tmpSizeVReg);
+  BuildMI(tailMBB, DL, TII->get(TargetOpcode::COPY), MI.getOperand(0).getReg())
+      .addReg(physSPReg);
+
+  tailMBB->splice(tailMBB->end(), BB,
+                  std::next(MachineBasicBlock::iterator(MI)), BB->end());
+  tailMBB->transferSuccessorsAndUpdatePHIs(BB);
+  BB->addSuccessor(testMBB);
+
+  // Delete the original pseudo instruction.
+  MI.eraseFromParent();
+
+  // And we're done.
+  return tailMBB;
+}
+
+MachineBasicBlock *
 X86TargetLowering::EmitLoweredSegAlloca(MachineInstr &MI,
                                         MachineBasicBlock *BB) const {
   MachineFunction *MF = BB->getParent();
@@ -32300,6 +32432,9 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
   case X86::SEG_ALLOCA_32:
   case X86::SEG_ALLOCA_64:
     return EmitLoweredSegAlloca(MI, BB);
+  case X86::PROBED_ALLOCA_32:
+  case X86::PROBED_ALLOCA_64:
+    return EmitLoweredProbedAlloca(MI, BB);
   case X86::TLSCall_32:
   case X86::TLSCall_64:
     return EmitLoweredTLSCall(MI, BB);
@@ -42926,7 +43061,8 @@ char X86TargetLowering::isNegatibleForFree(SDValue Op, SelectionDAG &DAG,
   case X86ISD::FNMADD_RND:
   case X86ISD::FNMSUB_RND: {
     if (!Op.hasOneUse() || !Subtarget.hasAnyFMA() || !isTypeLegal(VT) ||
-        !(SVT == MVT::f32 || SVT == MVT::f64) || !LegalOperations)
+        !(SVT == MVT::f32 || SVT == MVT::f64) ||
+        !isOperationLegal(ISD::FMA, VT))
       break;
 
     // This is always negatible for free but we might be able to remove some
@@ -42939,6 +43075,9 @@ char X86TargetLowering::isNegatibleForFree(SDValue Op, SelectionDAG &DAG,
     }
     return 1;
   }
+  case X86ISD::FRCP:
+    return isNegatibleForFree(Op.getOperand(0), DAG, LegalOperations,
+                              ForCodeSize, Depth + 1);
   }
 
   return TargetLowering::isNegatibleForFree(Op, DAG, LegalOperations,
@@ -42966,7 +43105,8 @@ SDValue X86TargetLowering::getNegatedExpression(SDValue Op, SelectionDAG &DAG,
   case X86ISD::FNMADD_RND:
   case X86ISD::FNMSUB_RND: {
     if (!Op.hasOneUse() || !Subtarget.hasAnyFMA() || !isTypeLegal(VT) ||
-        !(SVT == MVT::f32 || SVT == MVT::f64) || !LegalOperations)
+        !(SVT == MVT::f32 || SVT == MVT::f64) ||
+        !isOperationLegal(ISD::FMA, VT))
       break;
 
     // This is always negatible for free but we might be able to remove some
@@ -42991,6 +43131,11 @@ SDValue X86TargetLowering::getNegatedExpression(SDValue Op, SelectionDAG &DAG,
         NewOps[i] = Op.getOperand(i);
     return DAG.getNode(NewOpc, SDLoc(Op), VT, NewOps);
   }
+  case X86ISD::FRCP:
+    return DAG.getNode(Opc, SDLoc(Op), VT,
+                       getNegatedExpression(Op.getOperand(0), DAG,
+                                            LegalOperations, ForCodeSize,
+                                            Depth + 1));
   }
 
   return TargetLowering::getNegatedExpression(Op, DAG, LegalOperations,
@@ -45726,6 +45871,20 @@ static SDValue combineConcatVectorOps(const SDLoc &DL, MVT VT,
         return DAG.getBitcast(VT, Res);
       }
       break;
+    case X86ISD::VROTLI:
+    case X86ISD::VROTRI:
+      if (VT.is512BitVector() && Subtarget.useAVX512Regs() &&
+          llvm::all_of(Ops, [Op0](SDValue Op) {
+            return Op0.getOperand(1) == Op.getOperand(1);
+          })) {
+        SmallVector<SDValue, 2> Src;
+        for (unsigned i = 0; i != NumOps; ++i)
+          Src.push_back(Ops[i].getOperand(0));
+        return DAG.getNode(Op0.getOpcode(), DL, VT,
+                           DAG.getNode(ISD::CONCAT_VECTORS, DL, VT, Src),
+                           Op0.getOperand(1));
+      }
+      break;
     case X86ISD::PACKUS:
       if (NumOps == 2 && VT.is256BitVector() && Subtarget.hasInt256()) {
         SmallVector<SDValue, 2> LHS, RHS;
@@ -46532,27 +46691,6 @@ bool X86TargetLowering::IsDesirableToPromoteOp(SDValue Op, EVT &PVT) const {
   }
 
   PVT = MVT::i32;
-  return true;
-}
-
-bool X86TargetLowering::
-    isDesirableToCombineBuildVectorToShuffleTruncate(
-        ArrayRef<int> ShuffleMask, EVT SrcVT, EVT TruncVT) const {
-
-  assert(SrcVT.getVectorNumElements() == ShuffleMask.size() &&
-         "Element count mismatch");
-  assert(
-      Subtarget.getTargetLowering()->isShuffleMaskLegal(ShuffleMask, SrcVT) &&
-      "Shuffle Mask expected to be legal");
-
-  // For 32-bit elements VPERMD is better than shuffle+truncate.
-  // TODO: After we improve lowerBuildVector, add execption for VPERMW.
-  if (SrcVT.getScalarSizeInBits() == 32 || !Subtarget.hasAVX2())
-    return false;
-
-  if (is128BitLaneCrossingShuffleMask(SrcVT.getSimpleVT(), ShuffleMask))
-    return false;
-
   return true;
 }
 
@@ -47570,10 +47708,35 @@ bool X86TargetLowering::supportSwiftError() const {
   return Subtarget.is64Bit();
 }
 
+/// Returns true if stack probing through a function call is requested.
+bool X86TargetLowering::hasStackProbeSymbol(MachineFunction &MF) const {
+  return !getStackProbeSymbolName(MF).empty();
+}
+
+/// Returns true if stack probing through inline assembly is requested.
+bool X86TargetLowering::hasInlineStackProbe(MachineFunction &MF) const {
+
+  // No inline stack probe for Windows, they have their own mechanism.
+  if (Subtarget.isOSWindows() ||
+      MF.getFunction().hasFnAttribute("no-stack-arg-probe"))
+    return false;
+
+  // If the function specifically requests inline stack probes, emit them.
+  if (MF.getFunction().hasFnAttribute("probe-stack"))
+    return MF.getFunction().getFnAttribute("probe-stack").getValueAsString() ==
+           "inline-asm";
+
+  return false;
+}
+
 /// Returns the name of the symbol used to emit stack probes or the empty
 /// string if not applicable.
 StringRef
 X86TargetLowering::getStackProbeSymbolName(MachineFunction &MF) const {
+  // Inline Stack probes disable stack probe call
+  if (hasInlineStackProbe(MF))
+    return "";
+
   // If the function specifically requests stack probes, emit them.
   if (MF.getFunction().hasFnAttribute("probe-stack"))
     return MF.getFunction().getFnAttribute("probe-stack").getValueAsString();
