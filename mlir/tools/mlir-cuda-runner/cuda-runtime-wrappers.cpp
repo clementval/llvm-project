@@ -74,8 +74,8 @@ extern "C" int32_t mcuStreamSynchronize(void *stream) {
 // Allows to register byte array with the CUDA runtime. Helpful until we have
 // transfer functions implemented.
 extern "C" void mcuMemHostRegister(void *ptr, uint64_t sizeBytes) {
-  // reportErrorIfAny(cuMemHostRegister(ptr, sizeBytes, /*flags=*/0),
-  //                  "MemHostRegister");
+  reportErrorIfAny(cuMemHostRegister(ptr, sizeBytes, /*flags=*/0),
+                   "MemHostRegister");
 }
 
 // A struct that corresponds to how MLIR represents memrefs.
