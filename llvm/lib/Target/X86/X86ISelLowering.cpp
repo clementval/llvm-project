@@ -374,20 +374,30 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
   // If we don't have F16C support, then lower half float conversions
   // into library calls.
   if (!Subtarget.useSoftFloat() && Subtarget.hasF16C()) {
-    setOperationAction(ISD::FP16_TO_FP, MVT::f32, Custom);
-    setOperationAction(ISD::FP_TO_FP16, MVT::f32, Custom);
+    setOperationAction(ISD::FP16_TO_FP,        MVT::f32, Custom);
+    setOperationAction(ISD::STRICT_FP16_TO_FP, MVT::f32, Custom);
+    setOperationAction(ISD::FP_TO_FP16,        MVT::f32, Custom);
+    setOperationAction(ISD::STRICT_FP_TO_FP16, MVT::f32, Custom);
   } else {
-    setOperationAction(ISD::FP16_TO_FP, MVT::f32, Expand);
-    setOperationAction(ISD::FP_TO_FP16, MVT::f32, Expand);
+    setOperationAction(ISD::FP16_TO_FP,        MVT::f32, Expand);
+    setOperationAction(ISD::STRICT_FP16_TO_FP, MVT::f32, Expand);
+    setOperationAction(ISD::FP_TO_FP16,        MVT::f32, Expand);
+    setOperationAction(ISD::STRICT_FP_TO_FP16, MVT::f32, Expand);
   }
 
   // There's never any support for operations beyond MVT::f32.
   setOperationAction(ISD::FP16_TO_FP, MVT::f64, Expand);
   setOperationAction(ISD::FP16_TO_FP, MVT::f80, Expand);
   setOperationAction(ISD::FP16_TO_FP, MVT::f128, Expand);
+  setOperationAction(ISD::STRICT_FP16_TO_FP, MVT::f64, Expand);
+  setOperationAction(ISD::STRICT_FP16_TO_FP, MVT::f80, Expand);
+  setOperationAction(ISD::STRICT_FP16_TO_FP, MVT::f128, Expand);
   setOperationAction(ISD::FP_TO_FP16, MVT::f64, Expand);
   setOperationAction(ISD::FP_TO_FP16, MVT::f80, Expand);
   setOperationAction(ISD::FP_TO_FP16, MVT::f128, Expand);
+  setOperationAction(ISD::STRICT_FP_TO_FP16, MVT::f64, Expand);
+  setOperationAction(ISD::STRICT_FP_TO_FP16, MVT::f80, Expand);
+  setOperationAction(ISD::STRICT_FP_TO_FP16, MVT::f128, Expand);
 
   setLoadExtAction(ISD::EXTLOAD, MVT::f32, MVT::f16, Expand);
   setLoadExtAction(ISD::EXTLOAD, MVT::f64, MVT::f16, Expand);
@@ -20553,29 +20563,64 @@ SDValue X86TargetLowering::LowerFP_ROUND(SDValue Op, SelectionDAG &DAG) const {
 }
 
 static SDValue LowerFP16_TO_FP(SDValue Op, SelectionDAG &DAG) {
-  assert(Op.getOperand(0).getValueType() == MVT::i16 &&
-         Op.getValueType() == MVT::f32 && "Unexpected VT!");
+  bool IsStrict = Op->isStrictFPOpcode();
+  SDValue Src = Op.getOperand(IsStrict ? 1 : 0);
+  assert(Src.getValueType() == MVT::i16 && Op.getValueType() == MVT::f32 &&
+         "Unexpected VT!");
 
   SDLoc dl(Op);
   SDValue Res = DAG.getNode(ISD::INSERT_VECTOR_ELT, dl, MVT::v8i16,
-                            DAG.getConstant(0, dl, MVT::v8i16),
-                            Op.getOperand(0), DAG.getIntPtrConstant(0, dl));
-  Res = DAG.getNode(X86ISD::CVTPH2PS, dl, MVT::v4f32, Res);
-  return DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl, MVT::f32, Res,
-                     DAG.getIntPtrConstant(0, dl));
+                            DAG.getConstant(0, dl, MVT::v8i16), Src,
+                            DAG.getIntPtrConstant(0, dl));
+
+  SDValue Chain;
+  if (IsStrict) {
+    Res = DAG.getNode(X86ISD::STRICT_CVTPH2PS, dl, {MVT::v4f32, MVT::Other},
+                      {Op.getOperand(0), Res});
+    Chain = Res.getValue(1);
+  } else {
+    Res = DAG.getNode(X86ISD::CVTPH2PS, dl, MVT::v4f32, Res);
+  }
+
+  Res = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl, MVT::f32, Res,
+                    DAG.getIntPtrConstant(0, dl));
+
+  if (IsStrict)
+    return DAG.getMergeValues({Res, Chain}, dl);
+
+  return Res;
 }
 
 static SDValue LowerFP_TO_FP16(SDValue Op, SelectionDAG &DAG) {
-  assert(Op.getOperand(0).getValueType() == MVT::f32 &&
-         Op.getValueType() == MVT::i16 && "Unexpected VT!");
+  bool IsStrict = Op->isStrictFPOpcode();
+  SDValue Src = Op.getOperand(IsStrict ? 1 : 0);
+  assert(Src.getValueType() == MVT::f32 && Op.getValueType() == MVT::i16 &&
+         "Unexpected VT!");
 
   SDLoc dl(Op);
-  SDValue Res = DAG.getNode(ISD::SCALAR_TO_VECTOR, dl, MVT::v4f32,
-                            Op.getOperand(0));
-  Res = DAG.getNode(X86ISD::CVTPS2PH, dl, MVT::v8i16, Res,
-                    DAG.getTargetConstant(4, dl, MVT::i32));
-  return DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl, MVT::i16, Res,
-                     DAG.getIntPtrConstant(0, dl));
+  SDValue Res, Chain;
+  if (IsStrict) {
+    Res = DAG.getNode(ISD::INSERT_VECTOR_ELT, dl, MVT::v4f32,
+                      DAG.getConstantFP(0, dl, MVT::v4f32), Src,
+                      DAG.getIntPtrConstant(0, dl));
+    Res = DAG.getNode(
+        X86ISD::STRICT_CVTPS2PH, dl, {MVT::v8i16, MVT::Other},
+        {Op.getOperand(0), Res, DAG.getTargetConstant(4, dl, MVT::i32)});
+    Chain = Res.getValue(1);
+  } else {
+    // FIXME: Should we use zeros for upper elements for non-strict?
+    Res = DAG.getNode(ISD::SCALAR_TO_VECTOR, dl, MVT::v4f32, Src);
+    Res = DAG.getNode(X86ISD::CVTPS2PH, dl, MVT::v8i16, Res,
+                      DAG.getTargetConstant(4, dl, MVT::i32));
+  }
+
+  Res = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, dl, MVT::i16, Res,
+                    DAG.getIntPtrConstant(0, dl));
+
+  if (IsStrict)
+    return DAG.getMergeValues({Res, Chain}, dl);
+
+  return Res;
 }
 
 /// Depending on uarch and/or optimizing for size, we might prefer to use a
@@ -28821,8 +28866,10 @@ SDValue X86TargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::STRICT_FP_EXTEND:   return LowerFP_EXTEND(Op, DAG);
   case ISD::FP_ROUND:
   case ISD::STRICT_FP_ROUND:    return LowerFP_ROUND(Op, DAG);
-  case ISD::FP16_TO_FP:         return LowerFP16_TO_FP(Op, DAG);
-  case ISD::FP_TO_FP16:         return LowerFP_TO_FP16(Op, DAG);
+  case ISD::FP16_TO_FP:
+  case ISD::STRICT_FP16_TO_FP:  return LowerFP16_TO_FP(Op, DAG);
+  case ISD::FP_TO_FP16:
+  case ISD::STRICT_FP_TO_FP16:  return LowerFP_TO_FP16(Op, DAG);
   case ISD::LOAD:               return LowerLoad(Op, Subtarget, DAG);
   case ISD::STORE:              return LowerStore(Op, Subtarget, DAG);
   case ISD::FADD:
@@ -30162,8 +30209,10 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   NODE_NAME_CASE(SCALAR_UINT_TO_FP)
   NODE_NAME_CASE(SCALAR_UINT_TO_FP_RND)
   NODE_NAME_CASE(CVTPS2PH)
+  NODE_NAME_CASE(STRICT_CVTPS2PH)
   NODE_NAME_CASE(MCVTPS2PH)
   NODE_NAME_CASE(CVTPH2PS)
+  NODE_NAME_CASE(STRICT_CVTPH2PS)
   NODE_NAME_CASE(CVTPH2PS_SAE)
   NODE_NAME_CASE(CVTP2SI)
   NODE_NAME_CASE(CVTP2UI)
@@ -37359,10 +37408,7 @@ static SDValue combineHorizontalPredicateResult(SDNode *Extract,
       return SDValue();
     Movmsk = DAG.getZExtOrTrunc(Movmsk, DL, NumElts > 32 ? MVT::i64 : MVT::i32);
   } else {
-    // Bail with AVX512VL (which uses predicate registers).
-    if (Subtarget.hasVLX())
-      return SDValue();
-
+    // FIXME: Better handling of k-registers or 512-bit vectors?
     unsigned MatchSizeInBits = Match.getValueSizeInBits();
     if (!(MatchSizeInBits == 128 ||
           (MatchSizeInBits == 256 && Subtarget.hasAVX())))
@@ -43171,17 +43217,17 @@ static SDValue combineFneg(SDNode *N, SelectionDAG &DAG,
   return SDValue();
 }
 
-char X86TargetLowering::isNegatibleForFree(SDValue Op, SelectionDAG &DAG,
-                                           bool LegalOperations,
-                                           bool ForCodeSize,
-                                           unsigned Depth) const {
+TargetLowering::NegatibleCost
+X86TargetLowering::getNegatibleCost(SDValue Op, SelectionDAG &DAG,
+                                    bool LegalOperations, bool ForCodeSize,
+                                    unsigned Depth) const {
   // fneg patterns are removable even if they have multiple uses.
   if (isFNEG(DAG, Op.getNode(), Depth))
-    return 2;
+    return NegatibleCost::Cheaper;
 
   // Don't recurse exponentially.
   if (Depth > SelectionDAG::MaxRecursionDepth)
-    return 0;
+    return NegatibleCost::Expensive;
 
   EVT VT = Op.getValueType();
   EVT SVT = VT.getScalarType();
@@ -43202,20 +43248,20 @@ char X86TargetLowering::isNegatibleForFree(SDValue Op, SelectionDAG &DAG,
     // This is always negatible for free but we might be able to remove some
     // extra operand negations as well.
     for (int i = 0; i != 3; ++i) {
-      char V = isNegatibleForFree(Op.getOperand(i), DAG, LegalOperations,
-                                  ForCodeSize, Depth + 1);
-      if (V == 2)
+      NegatibleCost V = getNegatibleCost(Op.getOperand(i), DAG, LegalOperations,
+                                         ForCodeSize, Depth + 1);
+      if (V == NegatibleCost::Cheaper)
         return V;
     }
-    return 1;
+    return NegatibleCost::Neutral;
   }
   case X86ISD::FRCP:
-    return isNegatibleForFree(Op.getOperand(0), DAG, LegalOperations,
-                              ForCodeSize, Depth + 1);
+    return getNegatibleCost(Op.getOperand(0), DAG, LegalOperations, ForCodeSize,
+                            Depth + 1);
   }
 
-  return TargetLowering::isNegatibleForFree(Op, DAG, LegalOperations,
-                                            ForCodeSize, Depth);
+  return TargetLowering::getNegatibleCost(Op, DAG, LegalOperations, ForCodeSize,
+                                          Depth);
 }
 
 SDValue X86TargetLowering::getNegatedExpression(SDValue Op, SelectionDAG &DAG,
@@ -43247,9 +43293,9 @@ SDValue X86TargetLowering::getNegatedExpression(SDValue Op, SelectionDAG &DAG,
     // extra operand negations as well.
     SmallVector<SDValue, 4> NewOps(Op.getNumOperands(), SDValue());
     for (int i = 0; i != 3; ++i) {
-      char V = isNegatibleForFree(Op.getOperand(i), DAG, LegalOperations,
-                                  ForCodeSize, Depth + 1);
-      if (V == 2)
+      NegatibleCost V = getNegatibleCost(Op.getOperand(i), DAG, LegalOperations,
+                                         ForCodeSize, Depth + 1);
+      if (V == NegatibleCost::Cheaper)
         NewOps[i] = getNegatedExpression(Op.getOperand(i), DAG, LegalOperations,
                                          ForCodeSize, Depth + 1);
     }
@@ -44108,7 +44154,8 @@ static SDValue combineFMA(SDNode *N, SelectionDAG &DAG,
   auto invertIfNegative = [&DAG, &TLI, &DCI](SDValue &V) {
     bool CodeSize = DAG.getMachineFunction().getFunction().hasOptSize();
     bool LegalOperations = !DCI.isBeforeLegalizeOps();
-    if (TLI.isNegatibleForFree(V, DAG, LegalOperations, CodeSize) == 2) {
+    if (TLI.getNegatibleCost(V, DAG, LegalOperations, CodeSize) ==
+        TargetLowering::NegatibleCost::Cheaper) {
       V = TLI.getNegatedExpression(V, DAG, LegalOperations, CodeSize);
       return true;
     }
@@ -44117,7 +44164,8 @@ static SDValue combineFMA(SDNode *N, SelectionDAG &DAG,
     if (V.getOpcode() == ISD::EXTRACT_VECTOR_ELT &&
         isNullConstant(V.getOperand(1))) {
       SDValue Vec = V.getOperand(0);
-      if (TLI.isNegatibleForFree(Vec, DAG, LegalOperations, CodeSize) == 2) {
+      if (TLI.getNegatibleCost(Vec, DAG, LegalOperations, CodeSize) ==
+          TargetLowering::NegatibleCost::Cheaper) {
         SDValue NegVal =
             TLI.getNegatedExpression(Vec, DAG, LegalOperations, CodeSize);
         V = DAG.getNode(ISD::EXTRACT_VECTOR_ELT, SDLoc(V), V.getValueType(),
@@ -44163,7 +44211,8 @@ static SDValue combineFMADDSUB(SDNode *N, SelectionDAG &DAG,
   bool LegalOperations = !DCI.isBeforeLegalizeOps();
 
   SDValue N2 = N->getOperand(2);
-  if (TLI.isNegatibleForFree(N2, DAG, LegalOperations, CodeSize) != 2)
+  if (TLI.getNegatibleCost(N2, DAG, LegalOperations, CodeSize) !=
+      TargetLowering::NegatibleCost::Cheaper)
     return SDValue();
 
   SDValue NegN2 = TLI.getNegatedExpression(N2, DAG, LegalOperations, CodeSize);

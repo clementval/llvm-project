@@ -341,16 +341,6 @@ static StringSet<> DisasmFuncsSet;
 StringSet<> FoundSectionSet;
 static StringRef ToolName;
 
-static bool operator<(const SymbolInfoTy& P1 ,const SymbolInfoTy& P2) {
-  if (P1.Addr < P2.Addr)
-    return true;
-
-  if (P1.Addr == P2.Addr)
-    return P1.Name < P2.Name;
-
-  return false;
-}
-
 namespace {
 struct FilterResult {
   // True if the section should not be skipped.
@@ -1655,6 +1645,11 @@ void printRelocations(const ObjectFile *Obj) {
   for (std::pair<SectionRef, std::vector<SectionRef>> &P : SecToRelSec) {
     StringRef SecName = unwrapOrError(P.first.getName(), Obj->getFileName());
     outs() << "RELOCATION RECORDS FOR [" << SecName << "]:\n";
+    uint32_t OffsetPadding = (Obj->getBytesInAddress() > 4 ? 16 : 8);
+    uint32_t TypePadding = 24;
+    outs() << left_justify("OFFSET", OffsetPadding) << " "
+           << left_justify("TYPE", TypePadding) << " "
+           << "VALUE\n";
 
     for (SectionRef Section : P.second) {
       for (const RelocationRef &Reloc : Section.relocations()) {
@@ -1667,8 +1662,9 @@ void printRelocations(const ObjectFile *Obj) {
         if (Error E = getRelocationValueString(Reloc, ValueStr))
           reportError(std::move(E), Obj->getFileName());
 
-        outs() << format(Fmt.data(), Address) << " " << RelocName << " "
-               << ValueStr << "\n";
+        outs() << format(Fmt.data(), Address) << " "
+               << left_justify(RelocName, TypePadding) << " " << ValueStr
+               << "\n";
       }
     }
     outs() << "\n";
