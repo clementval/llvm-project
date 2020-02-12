@@ -170,3 +170,21 @@ p.printOptionalAttrDict(op.getAttrs());
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/OpenACC/OpenACC.cpp.inc"
+
+struct OpenACCLoopEmptyConstructFolder : public OpRewritePattern<acc::LoopOp> {
+  using OpRewritePattern<acc::LoopOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(acc::LoopOp loopOp,
+                                     PatternRewriter &rewriter) const override {
+    // Check that the body only contains a terminator.
+    if (!has_single_element(loopOp.getBody()))
+      return matchFailure();
+    rewriter.eraseOp(loopOp);
+    return matchSuccess();
+  }
+};
+
+void acc::LoopOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *context) {
+  patterns.insert<OpenACCLoopEmptyConstructFolder>(context);
+}

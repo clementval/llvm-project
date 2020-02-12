@@ -22,6 +22,8 @@
 #include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"
 #include "mlir/Conversion/LinalgToSPIRV/LinalgToSPIRVPass.h"
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"
+#include "mlir/Conversion/OpenACC/ConvertOpenACCToSeq.h"
+#include "mlir/Conversion/OpenACC/ConvertOpenACCToGPU.h"
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.h"
 #include "mlir/Dialect/FxpMathOps/Passes.h"
 #include "mlir/Dialect/GPU/Passes.h"
@@ -102,6 +104,10 @@ inline void registerAllPasses() {
   createConvertLinalgToParallelLoopsPass();
   createConvertLinalgToAffineLoopsPass();
   createConvertLinalgToLLVMPass();
+
+  // OpenACC
+  createConvertOpenACCToGPUPass();
+  createConvertOpenACCToSeqPass();
 
   // QuantOps
   quant::createConvertSimulatedQuantPass();

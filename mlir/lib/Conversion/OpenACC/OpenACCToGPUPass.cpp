@@ -248,5 +248,9 @@ void OpenACCToGPULoweringPass::runOnModule() {
     signalPassFailure();
 }
 
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertOpenACCToGPUPass() {
+  return std::make_unique<OpenACCToGPULoweringPass>();
+}
+
 static PassRegistration<OpenACCToGPULoweringPass>
     pass("convert-openacc-to-gpu", "Convert OpenACC Ops to GPU dialect");

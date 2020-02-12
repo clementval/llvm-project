@@ -38,6 +38,7 @@ target_link_libraries(MLIRAllDialects
   MLIRAffineOps
   MLIRFxpMathOps
   MLIRGPU
+  MLIROpenACC
   MLIRLLVMIR
   MLIRNVVMIR
   MLIRROCDLIR

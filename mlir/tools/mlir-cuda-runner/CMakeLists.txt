@@ -51,6 +51,8 @@ if(MLIR_CUDA_RUNNER_ENABLED)
     MLIRLLVMIR
     MLIRLinalgOps
     MLIRLoopToStandard
+    MLIROpenACC
+    MLIROpenACCPasses
     MLIROpenMP
     MLIRParser
     MLIRQuantOps

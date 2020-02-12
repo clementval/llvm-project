@@ -26,7 +26,7 @@ class OpPassBase;
 void populateOpenACCToGPUConversionPatterns(OwningRewritePatternList &patterns,
                                             MLIRContext *ctx);
 
-std::unique_ptr<OpPassBase<FuncOp>> createOpenACCToGPUPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createConvertOpenACCToGPUPass();
 
 } // namespace mlir
 

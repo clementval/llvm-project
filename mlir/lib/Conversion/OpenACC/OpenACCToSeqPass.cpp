@@ -88,5 +88,10 @@ void OpenACCToSeqConversionPass::runOnModule() {
     signalPassFailure();
 }
 
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertOpenACCToSeqPass() {
+  return std::make_unique<OpenACCToSeqConversionPass>();
+}
+
+
 static PassRegistration<OpenACCToSeqConversionPass>
     pass("convert-openacc-to-seq", "Convert OpenACC to sequential execution");

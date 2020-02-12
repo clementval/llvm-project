@@ -22,6 +22,7 @@
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/OpenACC/OpenACC.h"
 #include "mlir/Dialect/OpenMP/OpenMPDialect.h"
 #include "mlir/Dialect/QuantOps/QuantOps.h"
 #include "mlir/Dialect/SDBM/SDBMDialect.h"
@@ -36,6 +37,7 @@ namespace mlir {
 // all the possible dialects to be made available to the context automatically.
 inline void registerAllDialects() {
   static bool init_once = []() {
+    registerDialect<acc::OpenACCDialect>();
     registerDialect<AffineOpsDialect>();
     registerDialect<fxpmath::FxpMathOpsDialect>();
     registerDialect<gpu::GPUDialect>();

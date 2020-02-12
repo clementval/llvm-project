@@ -21,7 +21,7 @@ namespace mlir {
 template <typename T>
 class OpPassBase;
 
-std::unique_ptr<OpPassBase<FuncOp>> createOpenACCToSeqPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createConvertOpenACCToSeqPass();
 
 } // namespace mlir
 

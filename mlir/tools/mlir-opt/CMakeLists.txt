@@ -26,7 +26,6 @@ set(LIBS
   MLIRDialect
   MLIRLoopsToGPU
   MLIRLinalgToLLVM
-
   MLIRLoopToStandard
   MLIREDSC
   MLIRFxpMathOps
