@@ -67,8 +67,8 @@ def ParallelOp : OpenACC_Op<"parallel",
     }];
 
     let builders = [OpBuilder<"Builder *, OperationState &">];
-    let parser = [{ return parseRegionOp<$cppClass>(parser, result, 1); }];
-    let printer = [{ printRegionOp(getOperation(), p); }];
+    let parser = [{ return parseParallelOp(parser, result); }];
+    let printer = [{ printParallelOp(getOperation(), p); }];
     let regions = (region SizedRegion<1>:$region);
     let verifier = [{ return success(); }];
     let skipDefaultBuilders = 1;

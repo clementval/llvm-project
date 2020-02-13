@@ -98,17 +98,101 @@ static ParseResult parseRegionOp(OpAsmParser &parser, OperationState &state,
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// ParallelOp
-//===----------------------------------------------------------------------===//
+template <typename StructureOp>
+static ParseResult parseRegions(OpAsmParser &parser, OperationState &state,
+                               unsigned int nRegions = 1) {
 
-// static void print(OpAsmPrinter &p, ParallelOp op) {
-//    p << op.getOperationName();
-//   // p.printRegion(op.region(),
-//            ///*printEntryBlockArgs=*/false,
-//            ///*printBlockTerminators=*/false);
-//    p.printOptionalAttrDict(op.getAttrs());
-//}
+  llvm::SmallVector<Region *, 2> regions;
+  for (unsigned int i = 0; i < nRegions; ++i) {
+    regions.push_back(state.addRegion());
+  }
+
+  for (auto &region : regions) {
+    if (parser.parseRegion(*region, /*arguments=*/{}, /*argTypes=*/{})) {
+      return failure();
+    }
+    StructureOp::ensureTerminator(*region, parser.getBuilder(), state.location);
+  }
+
+  return success();
+}
+
+static ParseResult parseOptionalAttributes(OpAsmParser &parser, 
+                                           OperationState &state) {
+  if (succeeded(parser.parseOptionalKeyword("attributes"))) {
+    if (parser.parseOptionalAttrDict(state.attributes))
+      return failure();
+  }
+  return success();
+}
+
+static ArrayRef<StringRef> getParallelOpFormattedAttrs() {
+  return {ParallelOp::getNumGangsAttrName(), 
+          ParallelOp::getNumWorkersAttrName()};
+}
+
+static ParseResult parseFormattedAttrs(OpAsmParser &parser, 
+                                        OperationState &state, 
+                                        StringRef attrName) {
+  if(succeeded(parser.parseOptionalKeyword(attrName))) {
+    Attribute attr;
+    parser.parseLParen();
+    parser.parseAttribute(attr, attrName, state.attributes);
+    parser.parseRParen();
+  }
+  return success();
+}
+
+// Parse acc.parallel operation
+// operation := `acc.parallel` `num_gangs(value)?` `num_workers(value)?`
+//                             region attr-dict?
+static ParseResult parseParallelOp(OpAsmParser &parser, OperationState &state) {
+  if(failed(parseFormattedAttrs(parser, state, 
+                                ParallelOp::getNumGangsAttrName())))
+    return failure();
+
+  if(failed(parseFormattedAttrs(parser, state, 
+                                ParallelOp::getNumWorkersAttrName())))
+    return failure();
+
+  if(failed(parseRegions<ParallelOp>(parser, state)))
+    return failure();
+
+  if(failed(parseOptionalAttributes(parser, state)))
+    return failure();
+
+  return success();
+}
+
+static void printFormattedAttributes(Operation *op, OpAsmPrinter &printer, 
+                                     ArrayRef<StringRef> formattedAttrs) {
+  for(auto attr : op->getAttrs()) {
+    if(llvm::is_contained(formattedAttrs, attr.first.strref())) {
+      printer << " " << attr.first.strref() << "(";
+      printer.printAttribute(attr.second);
+      printer << ")";
+    }
+  }
+}
+
+static void printParallelOp(Operation *op, OpAsmPrinter &printer) {
+  printer << op->getName();
+  
+  printFormattedAttributes(op, printer, getParallelOpFormattedAttrs());
+
+  for (auto &region : op->getRegions()) {
+    printer.printRegion(region, false, false);
+  }
+
+  SmallVector<NamedAttribute, 8> filteredAttrs(
+    llvm::make_filter_range(op->getAttrs(), [&](NamedAttribute attr) {
+      return !llvm::is_contained(getParallelOpFormattedAttrs(), attr.first.strref());
+    }));
+
+  if (!filteredAttrs.empty()) {
+    printer.printOptionalAttrDictWithKeyword(op->getAttrs(), getParallelOpFormattedAttrs());
+  }
+}
 
 static void printRegionOp(Operation *op, OpAsmPrinter &printer) {
   printer << op->getName();
@@ -118,8 +202,7 @@ static void printRegionOp(Operation *op, OpAsmPrinter &printer) {
   }
 
   if (!op->getAttrs().empty()) {
-    printer << " attributes";
-    printer.printOptionalAttrDict(op->getAttrs());
+    printer.printOptionalAttrDictWithKeyword(op->getAttrs());
   }
 }
 
