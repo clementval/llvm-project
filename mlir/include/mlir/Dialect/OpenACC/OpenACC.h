@@ -31,6 +31,8 @@ public:
   static StringRef getAsyncAttrName() { return "async"; }
 };
 
+enum OpenACCExecMapping { NONE = 0, VECTOR = 1, GANG = 10, GANG_VECTOR = 11 };
+
 #define GET_OP_CLASSES
 
 #include "mlir/Dialect/OpenACC/OpenACC.h.inc"

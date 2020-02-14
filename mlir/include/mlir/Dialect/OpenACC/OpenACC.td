@@ -124,8 +124,8 @@ def LoopOp : OpenACC_Op<"loop",
 
     let builders = [OpBuilder<"Builder *, OperationState &">];
 
-    let parser = [{ return parseRegionOp<$cppClass>(parser, result, 1); }];
-    let printer = [{ printRegionOp(getOperation(), p); }];
+    let parser = [{ return parseLoopOp(parser, result); }];
+    let printer = [{ printLoopOp(getOperation(), p); }];
 
     let regions = (region SizedRegion<1>:$region);
     let verifier = [{ return success(); }];
@@ -135,6 +135,10 @@ def LoopOp : OpenACC_Op<"loop",
     let extraClassDeclaration = [{
         Block &getBody() {
           return this->getOperation()->getRegion(0).front();
+        }
+
+        static StringRef getExecutionMappingAttrName() {
+          return "exec_mapping";
         }
 
         static StringRef getCollapseAttrName() {
@@ -163,15 +167,29 @@ def LoopOp : OpenACC_Op<"loop",
               ? getAttrOfType<IntegerAttr>(getCollapseAttrName()).getInt()
               : 1;
         }
+
+        unsigned getExecutionMappingAttr() {
+          return 
+              getAttrOfType<IntegerAttr>(getExecutionMappingAttrName()) != nullptr
+              ? getAttrOfType<IntegerAttr>(getExecutionMappingAttrName()).getInt()
+              : 0;
+        }
+
+        bool isGangVector() {
+          unsigned execMapping = getExecutionMappingAttr();
+          return (execMapping & OpenACCExecMapping::GANG_VECTOR) 
+              == OpenACCExecMapping::GANG_VECTOR 
+              || execMapping == OpenACCExecMapping::NONE;
+        }
         
         bool isGang() {
-          UnitAttr gangAttr = getAttrOfType<UnitAttr>(getGangAttrName());
-          return static_cast<bool>(gangAttr);
+          unsigned execMapping = getExecutionMappingAttr();
+          return (execMapping & OpenACCExecMapping::GANG) == OpenACCExecMapping::GANG;
         }
 
         bool isVector() {
-          UnitAttr vectorAttr = getAttrOfType<UnitAttr>(getVectorAttrName());
-          return static_cast<bool>(vectorAttr);
+          unsigned execMapping = getExecutionMappingAttr();
+          return (execMapping & OpenACCExecMapping::VECTOR) == OpenACCExecMapping::VECTOR;
         }
 
         bool hasSeqAttr() {
