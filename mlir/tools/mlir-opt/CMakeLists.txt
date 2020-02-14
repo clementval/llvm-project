@@ -34,6 +34,7 @@ set(LIBS
   MLIRGPUtoNVVMTransforms
   MLIRGPUtoROCDLTransforms
   MLIRGPUtoSPIRVTransforms
+  MLIRGPUtoVulkanTransforms
   MLIRLinalgOps
   MLIRLinalgAnalysis
   MLIRLinalgEDSC
