@@ -2731,9 +2731,10 @@ multiclass sve2_int_mul_by_indexed_elem<bits<4> opc, string asm,
   def : SVE_3_Op_Imm_Pat<nxv2i64, op, nxv2i64, nxv2i64, i32, VectorIndexD32b_timm, !cast<Instruction>(NAME # _D)>;
 }
 
-multiclass sve2_int_mul_long_by_indexed_elem<bits<3> opc, string asm> {
+multiclass sve2_int_mul_long_by_indexed_elem<bits<3> opc, string asm,
+                                             SDPatternOperator op> {
   def _S : sve2_int_mul_by_indexed_elem<0b10, { opc{2-1}, ?, opc{0} }, asm,
-                                        ZPR32, ZPR16, ZPR3b16, VectorIndexH> {
+                                        ZPR32, ZPR16, ZPR3b16, VectorIndexH32b> {
     bits<3> Zm;
     bits<3> iop;
     let Inst{20-19} = iop{2-1};
@@ -2741,13 +2742,16 @@ multiclass sve2_int_mul_long_by_indexed_elem<bits<3> opc, string asm> {
     let Inst{11} = iop{0};
   }
   def _D : sve2_int_mul_by_indexed_elem<0b11, { opc{2-1}, ?, opc{0} }, asm,
-                                        ZPR64, ZPR32, ZPR4b32, VectorIndexS> {
+                                        ZPR64, ZPR32, ZPR4b32, VectorIndexS32b> {
     bits<4> Zm;
     bits<2> iop;
     let Inst{20} = iop{1};
     let Inst{19-16} = Zm;
     let Inst{11} = iop{0};
   }
+
+  def : SVE_3_Op_Imm_Pat<nxv4i32, op, nxv8i16, nxv8i16, i32, VectorIndexH32b_timm, !cast<Instruction>(NAME # _S)>;
+  def : SVE_3_Op_Imm_Pat<nxv2i64, op, nxv4i32, nxv4i32, i32, VectorIndexS32b_timm, !cast<Instruction>(NAME # _D)>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2894,15 +2898,36 @@ multiclass sve2_wide_int_arith_long<bits<5> opc, string asm,
   def : SVE_2_Op_Pat<nxv2i64, op, nxv4i32, nxv4i32, !cast<Instruction>(NAME # _D)>;
 }
 
-multiclass sve2_wide_int_arith_wide<bits<3> opc, string asm> {
+multiclass sve2_wide_int_arith_wide<bits<3> opc, string asm,
+                                    SDPatternOperator op> {
   def _H : sve2_wide_int_arith<0b01, { 0b10, opc }, asm, ZPR16, ZPR16, ZPR8>;
   def _S : sve2_wide_int_arith<0b10, { 0b10, opc }, asm, ZPR32, ZPR32, ZPR16>;
   def _D : sve2_wide_int_arith<0b11, { 0b10, opc }, asm, ZPR64, ZPR64, ZPR32>;
+
+  def : SVE_2_Op_Pat<nxv8i16, op, nxv8i16, nxv16i8, !cast<Instruction>(NAME # _H)>;
+  def : SVE_2_Op_Pat<nxv4i32, op, nxv4i32, nxv8i16, !cast<Instruction>(NAME # _S)>;
+  def : SVE_2_Op_Pat<nxv2i64, op, nxv2i64, nxv4i32, !cast<Instruction>(NAME # _D)>;
 }
 
-multiclass sve2_pmul_long<bits<1> opc, string asm> {
+multiclass sve2_wide_int_arith_pmul<bits<2> sz, bits<5> opc, string asm,
+                                     SDPatternOperator op> {
+  def NAME : sve2_wide_int_arith<sz, opc, asm, ZPR128, ZPR64, ZPR64>;
+
+  // To avoid using 128 bit elements in the IR, the pattern below works with
+  // llvm intrinsics with the _pair suffix, to reflect that
+  // _Q is implemented as a pair of _D.
+  def : SVE_2_Op_Pat<nxv2i64, op, nxv2i64, nxv2i64, !cast<Instruction>(NAME)>;
+}
+
+multiclass sve2_pmul_long<bits<1> opc, string asm, SDPatternOperator op> {
   def _H : sve2_wide_int_arith<0b01, {0b1101, opc}, asm, ZPR16, ZPR8, ZPR8>;
   def _D : sve2_wide_int_arith<0b11, {0b1101, opc}, asm, ZPR64, ZPR32, ZPR32>;
+
+  // To avoid using 128 bit elements in the IR, the patterns below work with
+  // llvm intrinsics with the _pair suffix, to reflect that
+  // _H is implemented as a pair of _B and _D is implemented as a pair of _S.
+  def : SVE_2_Op_Pat<nxv16i8, op, nxv16i8, nxv16i8, !cast<Instruction>(NAME # _H)>;
+  def : SVE_2_Op_Pat<nxv4i32, op, nxv4i32, nxv4i32, !cast<Instruction>(NAME # _D)>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2965,11 +2990,17 @@ class sve2_bitwise_xor_interleaved<bits<2> sz, bits<1> opc, string asm,
   let ElementSize = ElementSizeNone;
 }
 
-multiclass sve2_bitwise_xor_interleaved<bit opc, string asm> {
+multiclass sve2_bitwise_xor_interleaved<bit opc, string asm,
+                                        SDPatternOperator op> {
   def _B : sve2_bitwise_xor_interleaved<0b00, opc, asm, ZPR8,  ZPR8>;
   def _H : sve2_bitwise_xor_interleaved<0b01, opc, asm, ZPR16, ZPR16>;
   def _S : sve2_bitwise_xor_interleaved<0b10, opc, asm, ZPR32, ZPR32>;
   def _D : sve2_bitwise_xor_interleaved<0b11, opc, asm, ZPR64, ZPR64>;
+
+  def : SVE_3_Op_Pat<nxv16i8, op, nxv16i8, nxv16i8, nxv16i8, !cast<Instruction>(NAME # _B)>;
+  def : SVE_3_Op_Pat<nxv8i16, op, nxv8i16, nxv8i16, nxv8i16, !cast<Instruction>(NAME # _H)>;
+  def : SVE_3_Op_Pat<nxv4i32, op, nxv4i32, nxv4i32, nxv4i32, !cast<Instruction>(NAME # _S)>;
+  def : SVE_3_Op_Pat<nxv2i64, op, nxv2i64, nxv2i64, nxv2i64, !cast<Instruction>(NAME # _D)>;
 }
 
 class sve2_bitwise_shift_left_long<bits<3> tsz8_64, bits<2> opc, string asm,
@@ -2992,7 +3023,8 @@ class sve2_bitwise_shift_left_long<bits<3> tsz8_64, bits<2> opc, string asm,
   let Inst{4-0}   = Zd;
 }
 
-multiclass sve2_bitwise_shift_left_long<bits<2> opc, string asm> {
+multiclass sve2_bitwise_shift_left_long<bits<2> opc, string asm,
+                                        SDPatternOperator op> {
   def _H : sve2_bitwise_shift_left_long<{0,0,1}, opc, asm,
                                         ZPR16, ZPR8, vecshiftL8>;
   def _S : sve2_bitwise_shift_left_long<{0,1,?}, opc, asm,
@@ -3003,6 +3035,9 @@ multiclass sve2_bitwise_shift_left_long<bits<2> opc, string asm> {
                                         ZPR64, ZPR32, vecshiftL32> {
     let Inst{20-19} = imm{4-3};
   }
+  def : SVE_2_Op_Imm_Pat<nxv8i16, op, nxv16i8, i32, tvecshiftL8,  !cast<Instruction>(NAME # _H)>;
+  def : SVE_2_Op_Imm_Pat<nxv4i32, op, nxv8i16, i32, tvecshiftL16, !cast<Instruction>(NAME # _S)>;
+  def : SVE_2_Op_Imm_Pat<nxv2i64, op, nxv4i32, i32, tvecshiftL32, !cast<Instruction>(NAME # _D)>;
 }
 
 //===----------------------------------------------------------------------===//

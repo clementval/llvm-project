@@ -116,6 +116,7 @@ private:
 
   void initM0(MachineInstr &I) const;
   bool selectG_LOAD_ATOMICRMW(MachineInstr &I) const;
+  bool selectG_AMDGPU_ATOMIC_CMPXCHG(MachineInstr &I) const;
   bool selectG_STORE(MachineInstr &I) const;
   bool selectG_SELECT(MachineInstr &I) const;
   bool selectG_BRCOND(MachineInstr &I) const;
@@ -221,6 +222,9 @@ private:
 
   InstructionSelector::ComplexRendererFns
   selectMUBUFAddr64Atomic(MachineOperand &Root) const;
+
+  ComplexRendererFns selectSMRDBufferImm(MachineOperand &Root) const;
+  ComplexRendererFns selectSMRDBufferImm32(MachineOperand &Root) const;
 
   void renderTruncImm32(MachineInstrBuilder &MIB, const MachineInstr &MI,
                         int OpIdx = -1) const;
