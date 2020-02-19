@@ -1,0 +1,33 @@
+//===- ConvertOpenACCToTarget.h ----------------------------------- C++ -*-===//
+//
+// Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// =============================================================================
+//
+// Provides patterns to convert from OpenACC ops to target runtime.
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef MLIR_CONVERSION_OPENACC_CONVERTOPENACCTOTARGET_H
+#define MLIR_CONVERSION_OPENACC_CONVERTOPENACCTOTARGET_H
+
+#include "mlir/Dialect/OpenACC/OpenACC.h"
+#include "mlir/Support/StringExtras.h"
+#include "mlir/Transforms/DialectConversion.h"
+
+namespace mlir {
+template <typename T>
+class OpPassBase;
+/// Collect a set of patterns to lower from OpenACC structure
+/// operations (acc.loop, acc.parallel etc.) to other
+/// operations
+void populateOpenACCToTargetConversionPatterns(OwningRewritePatternList &patterns,
+                                               MLIRContext *ctx);
+
+std::unique_ptr<OpPassBase<ModuleOp>> createConvertOpenACCToTargetPass();
+
+} // namespace mlir
+
+#endif // MLIR_CONVERSION_OPENACC_CONVERTOPENACCTOTARGET_H

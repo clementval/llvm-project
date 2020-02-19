@@ -5,6 +5,7 @@ add_public_tablegen_target(MLIROpenACCToGPUIncGen)
 add_llvm_library(MLIROpenACCPasses
   OpenACCToGPUPass.cpp
   OpenACCToSeqPass.cpp
+  OpenACCToTargetPass.cpp
 )
 
 add_dependencies(MLIROpenACCPasses MLIROpenACCToGPUIncGen)
