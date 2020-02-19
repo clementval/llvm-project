@@ -6,7 +6,7 @@
 //
 // =============================================================================
 //
-// Provides patterns to convert from Stencil structure ops to affine ops.
+// Provides patterns to convert from OpenACC operations to GPU operations.
 //
 //===----------------------------------------------------------------------===//
 
