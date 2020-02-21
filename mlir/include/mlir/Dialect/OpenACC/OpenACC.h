@@ -15,6 +15,7 @@
 #define MLIR_DIALECT_OPENACC_DIALECT_H
 
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/FunctionSupport.h"
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
@@ -31,7 +32,7 @@ public:
   static StringRef getAsyncAttrName() { return "async"; }
 };
 
-enum OpenACCExecMapping { NONE = 0, VECTOR = 1, GANG = 10, GANG_VECTOR = 11 };
+enum OpenACCExecMapping { NONE = 0, VECTOR = 1, WORKER = 2, GANG = 4, GANG_VECTOR = 5 };
 
 #define GET_OP_CLASSES
 

@@ -66,26 +66,36 @@ def ParallelOp : OpenACC_Op<"parallel",
         }
     }];
 
-    let builders = [OpBuilder<"Builder *, OperationState &">];
+    let builders = [
+      OpBuilder<"Builder *, OperationState &">
+    ];
     let parser = [{ return parseParallelOp(parser, result); }];
-    let printer = [{ printParallelOp(getOperation(), p); }];
+    let printer = [{ printParallelOp(*this, p); }];
     let regions = (region SizedRegion<1>:$region);
     let verifier = [{ return success(); }];
     let skipDefaultBuilders = 1;
 
     let extraClassDeclaration = [{
-        Block &getBody() {
-          return this->getOperation()->getRegion(0).front();
+
+        Region &getBody() { return this->getOperation()->getRegion(0); }
+
+        static StringRef getNumGangsAttrName() { return "num_gangs"; }
+        static StringRef getNumWorkersAttrName() { return "num_workers"; }
+        static StringRef getPrivateKeyword() { return "private"; }
+        static StringRef getNumGangPrivateAttrName() {
+          return "gang_private";
         }
 
-        /// Returns the name of the attribute containing the number of gangs.
-        static StringRef getNumGangsAttrName() {
-          return "num_gangs";
+        /// Returns the number of gang private.
+        unsigned getNumGangPrivates() {
+          return getAttrOfType<IntegerAttr>(getNumGangPrivateAttrName())
+              .getInt();
         }
 
-        /// Returns the name of the attribute containing the number of workers.
-        static StringRef getNumWorkersAttrName() {
-          return "num_workers";
+        ArrayRef<BlockArgument> getGangPrivates() {
+          auto begin = getBody().front().args_begin();
+          auto end = std::next(begin, getNumGangPrivates());
+          return {begin, end};
         }
 
         /// Returns the number of gangs defined for the parallel op
@@ -102,6 +112,8 @@ def ParallelOp : OpenACC_Op<"parallel",
               ? getAttrOfType<IntegerAttr>(getNumWorkersAttrName()).getInt()
               : 1;
         }
+
+        
     }];
 
 }
@@ -125,7 +137,7 @@ def LoopOp : OpenACC_Op<"loop",
     let builders = [OpBuilder<"Builder *, OperationState &">];
 
     let parser = [{ return parseLoopOp(parser, result); }];
-    let printer = [{ printLoopOp(getOperation(), p); }];
+    let printer = [{ printLoopOp(*this, p); }];
 
     let regions = (region SizedRegion<1>:$region);
     let verifier = [{ return success(); }];
@@ -133,29 +145,14 @@ def LoopOp : OpenACC_Op<"loop",
     let hasCanonicalizer = 1;
 
     let extraClassDeclaration = [{
-        Block &getBody() {
-          return this->getOperation()->getRegion(0).front();
-        }
+        Region &getBody() { return this->getOperation()->getRegion(0); }
 
-        static StringRef getExecutionMappingAttrName() {
-          return "exec_mapping";
-        }
-
-        static StringRef getCollapseAttrName() {
-          return "collapse";
-        }
-
-        static StringRef getGangAttrName() {
-          return "gang";
-        }
-
-        static StringRef getSeqAttrName() {
-          return "seq";
-        }
-
-        static StringRef getVectorAttrName() {
-          return "vector";
-        }
+        static StringRef getExecutionMappingAttrName() { return "exec_mapping"; }
+        static StringRef getCollapseAttrName() { return "collapse"; }
+        static StringRef getGangAttrName() { return "gang"; }
+        static StringRef getSeqAttrName() { return "seq"; }
+        static StringRef getVectorAttrName() { return "vector"; }
+        static StringRef getWorkerAttrName() { return "worker"; }
 
         bool hasCollapseAttr() {
             return getAttrOfType<IntegerAttr>(getCollapseAttrName()) != nullptr;
@@ -190,6 +187,11 @@ def LoopOp : OpenACC_Op<"loop",
         bool isVector() {
           unsigned execMapping = getExecutionMappingAttr();
           return (execMapping & OpenACCExecMapping::VECTOR) == OpenACCExecMapping::VECTOR;
+        }
+
+        bool isWorker() {
+          unsigned execMapping = getExecutionMappingAttr();
+          return (execMapping & OpenACCExecMapping::WORKER) == OpenACCExecMapping::WORKER;
         }
 
         bool hasSeqAttr() {

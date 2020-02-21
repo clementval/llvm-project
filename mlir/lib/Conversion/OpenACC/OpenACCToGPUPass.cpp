@@ -132,7 +132,7 @@ static LogicalResult collapseNestedLoops(loop::ForOp rootForOp,
 static LogicalResult applyCollapseClause(acc::LoopOp accLoopOp) {
   if (!accLoopOp.hasCollapseAttr())
     return success();
-  if (auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front())) {
+  if (auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front().front())) {
     if(failed(collapseNestedLoops(forOp, accLoopOp)))
       return failure();
     accLoopOp.removeAttr(acc::LoopOp::getCollapseAttrName());
@@ -142,7 +142,7 @@ static LogicalResult applyCollapseClause(acc::LoopOp accLoopOp) {
 
 static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp,
                                                  gpu::LaunchOp launchOp) {
-  if (auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front())) {
+  if (auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front().front())) {
     OpBuilder builder(forOp);
     Location loc(forOp.getLoc());
 
@@ -189,7 +189,7 @@ static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp,
 
     extractRegionBeforeItself(accLoopOp);
     accLoopOp.erase();
-  } else if (dyn_cast<AffineForOp>(accLoopOp.getBody().front())) {
+  } else if (dyn_cast<AffineForOp>(accLoopOp.getBody().front().front())) {
     accLoopOp.emitError(
         "affine.for operation in acc.loop not supported yet.");
     return failure();
@@ -201,7 +201,7 @@ static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp,
 }
 
 static void gatherForOp(acc::LoopOp accLoopOp, SmallVector<loop::ForOp, 2> &forOps) {
-  if(auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front())) {
+  if(auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front().front())) {
     forOps.push_back(forOp);
   }
 }
@@ -232,8 +232,8 @@ static void hoistOpBeforeOperation(StructureOp &parentOp,
                                    acc::LoopOp &accLoopOp) {
   // Hoist operation created by coalesceLoops out of acc.loop
   SmallVector<Operation *, 5> toHoist;
-  for (auto &op : accLoopOp.getBody().getOperations()) {
-    if (dyn_cast<loop::ForOp>(&op))
+  for (auto &op : accLoopOp.getBody().front().getOperations()) {
+    if (isa<loop::ForOp>(op))
       break;
     toHoist.push_back(&op);
   }

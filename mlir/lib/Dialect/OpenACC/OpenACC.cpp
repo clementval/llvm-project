@@ -143,13 +143,14 @@ static ParseResult parseFormattedAttr(OpAsmParser &parser,
   return success();
 }
 
-static void printFormattedAttr(Operation *op, OpAsmPrinter &printer,
+template <typename OpTy>
+static void printFormattedAttr(OpTy &op, OpAsmPrinter &printer,
                                StringRef attrName, bool hasValue = true) {
-  if (op->getAttr(attrName) != nullptr) {
+  if (op.getAttr(attrName) != nullptr) {
     printer << " " << attrName;
     if (hasValue) {
       printer << "(";
-      printer.printAttribute(op->getAttr(attrName));
+      printer.printAttribute(op.getAttr(attrName));
       printer << ")";
     }
   }
@@ -159,48 +160,101 @@ static void printFormattedAttr(Operation *op, OpAsmPrinter &printer,
 // ParallelOp
 //===----------------------------------------------------------------------===//
 
+static ParseResult parsePrivate(OpAsmParser &parser,
+                                SmallVectorImpl<OpAsmParser::OperandType> &args, 
+                                SmallVectorImpl<Type> &argTypes) {
+  if(failed(parser.parseOptionalKeyword(ParallelOp::getPrivateKeyword())))
+    return success();
+
+  if (failed(parser.parseLParen()))
+    return failure();
+
+  // Exit if empty list
+  if (succeeded(parser.parseOptionalRParen()))
+    return success();
+
+  do {
+    OpAsmParser::OperandType arg;
+    Type type;
+
+    if (parser.parseRegionArgument(arg) || parser.parseColonType(type))
+      return failure();
+
+    args.push_back(arg);
+    argTypes.push_back(type);
+  } while (succeeded(parser.parseOptionalComma()));
+
+  return parser.parseRParen();
+}
+
 // Parse acc.parallel operation
 // operation := `acc.parallel` `num_gangs(value)?` `num_workers(value)?`
 //                             region attr-dict?
 static ParseResult parseParallelOp(OpAsmParser &parser, OperationState &state) {
-  if (failed(
-          parseFormattedAttr(parser, state, ParallelOp::getNumGangsAttrName())))
+  
+  SmallVector<OpAsmParser::OperandType, 8> entryArgs;
+  SmallVector<Type, 8> argTypes;
+
+  // num_gangs(value)?
+  if (failed(parseFormattedAttr(parser, state, ParallelOp::getNumGangsAttrName())))
     return failure();
 
+  // num_worker(value)?
   if (failed(parseFormattedAttr(parser, state,
                                 ParallelOp::getNumWorkersAttrName())))
     return failure();
 
+  // private()?
+  
+  if (failed(parsePrivate(parser, entryArgs, argTypes)))
+    return failure();    
+
+  Builder &builder = parser.getBuilder();
+  state.addAttribute(ParallelOp::getNumGangPrivateAttrName(),
+                      builder.getI64IntegerAttr(argTypes.size()));
+
+  // Parallel op region
   if (failed(parseRegions<ParallelOp>(parser, state)))
     return failure();
 
+  // Additional attributes
   if (failed(parseOptionalAttributes(parser, state)))
     return failure();
+
+  
 
   return success();
 }
 
-static void printParallelOp(Operation *op, OpAsmPrinter &printer) {
-  printer << op->getName();
+static void printParallelOp(ParallelOp &op, OpAsmPrinter &printer) {
+  printer << ParallelOp::getOperationName();
 
   printFormattedAttr(op, printer, ParallelOp::getNumGangsAttrName());
   printFormattedAttr(op, printer, ParallelOp::getNumWorkersAttrName());
+
+  // 
+  ArrayRef<BlockArgument> privates = op.getGangPrivates();
+  if(!privates.empty()) {
+    printer << " " << ParallelOp::getPrivateKeyword() << "(";
+    // TODO segfault
+    // interleaveComma(privates, printer,
+    //     [&printer](BlockArgument v) { printer << v << " : " << v.getType(); });
+    printer << ")";
+  }
 
   SmallVector<StringRef, 2> formattedAttrs;
   formattedAttrs.push_back(ParallelOp::getNumGangsAttrName());
   formattedAttrs.push_back(ParallelOp::getNumWorkersAttrName());
 
-  for (auto &region : op->getRegions()) {
-    printer.printRegion(region, false, false);
-  }
+  printer.printRegion(op.getBody(), false, false);
 
   SmallVector<NamedAttribute, 8> filteredAttrs(
-      llvm::make_filter_range(op->getAttrs(), [&](NamedAttribute attr) {
+      llvm::make_filter_range(op.getAttrs(), [&](NamedAttribute attr) {
         return !llvm::is_contained(formattedAttrs, attr.first.strref());
       }));
 
   if (!filteredAttrs.empty()) {
-    printer.printOptionalAttrDictWithKeyword(op->getAttrs(), formattedAttrs);
+    printer.printOptionalAttrDictWithKeyword(op.getAttrs(), formattedAttrs);
   }
 }
 
@@ -225,6 +279,9 @@ static ParseResult parseLoopOp(OpAsmParser &parser, OperationState &state) {
   if (succeeded(parser.parseOptionalKeyword(LoopOp::getVectorAttrName())))
     executionMapping |= OpenACCExecMapping::VECTOR;
 
+  if (succeeded(parser.parseOptionalKeyword(LoopOp::getWorkerAttrName())))
+    executionMapping |= OpenACCExecMapping::WORKER;    
+
   if (executionMapping != 0)
     state.addAttribute(LoopOp::getExecutionMappingAttrName(),
                        builder.getI64IntegerAttr(executionMapping));
@@ -241,34 +298,34 @@ static ParseResult parseLoopOp(OpAsmParser &parser, OperationState &state) {
   return success();
 }
 
-static void printLoopOp(Operation *op, OpAsmPrinter &printer) {
-  printer << op->getName();
+static void printLoopOp(LoopOp &op, OpAsmPrinter &printer) {
+  printer << LoopOp::getOperationName();
 
-  unsigned execMapping = (op->getAttrOfType<IntegerAttr>(
+  unsigned execMapping = (op.getAttrOfType<IntegerAttr>(
                               LoopOp::getExecutionMappingAttrName()) != nullptr)
-                             ? op->getAttrOfType<IntegerAttr>(
+                             ? op.getAttrOfType<IntegerAttr>(
                                      LoopOp::getExecutionMappingAttrName())
                                    .getInt()
                              : 0;
-  if ((execMapping & OpenACCExecMapping::GANG) == OpenACCExecMapping::GANG) {
+  if ((execMapping & OpenACCExecMapping::GANG) == OpenACCExecMapping::GANG)
     printer << " " << LoopOp::getGangAttrName();
-  }
-  if ((execMapping & OpenACCExecMapping::VECTOR) ==
-      OpenACCExecMapping::VECTOR) {
+
+  if ((execMapping & OpenACCExecMapping::WORKER) == OpenACCExecMapping::WORKER)
+    printer << " " << LoopOp::getWorkerAttrName();    
+  
+  if ((execMapping & OpenACCExecMapping::VECTOR) == OpenACCExecMapping::VECTOR)
     printer << " " << LoopOp::getVectorAttrName();
-  }
+
 
   printFormattedAttr(op, printer, LoopOp::getSeqAttrName(), false);
 
-  for (auto &region : op->getRegions()) {
-    printer.printRegion(region, false, false);
-  }
+  printer.printRegion(op.getBody(), false, false);  
 
   SmallVector<StringRef, 1> formattedAttrs;
   formattedAttrs.push_back(LoopOp::getExecutionMappingAttrName());
   formattedAttrs.push_back(LoopOp::getSeqAttrName());
 
-  printer.printOptionalAttrDictWithKeyword(op->getAttrs(), formattedAttrs);
+  printer.printOptionalAttrDictWithKeyword(op.getAttrs(), formattedAttrs);
 }
 
 //===----------------------------------------------------------------------===//
