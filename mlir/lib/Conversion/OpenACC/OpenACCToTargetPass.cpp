@@ -18,7 +18,7 @@
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/OpenACC/OpenACC.h"
 #include "mlir/Dialect/OpenACC/Passes.h"
-#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
@@ -441,10 +441,10 @@ static void injectGpuIndexOperations(Location loc, Region &body) {
   createForAllDimensions<gpu::BlockDimOp>(builder, loc, indexOps);
   // Replace the leading 12 function args with the respective thread/block index
   // operations. Iterate backwards since args are erased and indices change.
-  // for (int i = 11; i >= 0; --i) {
-  //   firstBlock.getArgument(i).replaceAllUsesWith(indexOps[i]);
-  //   firstBlock.eraseArgument(i);
-  // }
+  for (int i = 11; i >= 0; --i) {
+    firstBlock.getArgument(i).replaceAllUsesWith(indexOps[i]);
+    firstBlock.eraseArgument(i);
+  }
 }
 
 static gpu::GPUFuncOp
@@ -459,7 +459,7 @@ convertOutlinedParallelRegionToKernel(FuncOp outlinedParallelRegion) {
   kernelFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
                      builder.getUnitAttr());
   kernelFunc.body().takeBody(outlinedParallelRegion.getBody());
-  injectGpuIndexOperations(loc, kernelFunc.body());
+  // injectGpuIndexOperations(loc, kernelFunc.body());
   kernelFunc.walk([](ReturnOp op) {
     OpBuilder replacer(op);
     replacer.create<gpu::ReturnOp>(op.getLoc());

@@ -26,6 +26,23 @@ extern "C" void _mlir_ciface_print_memref_vector_4x4xf32(
     impl::printMemRef(*(static_cast<StridedMemRefType<TYPE, RANK> *>(ptr)));   \
     break
 
+
+extern "C" void _mlir_ciface_print_memref_i64(UnrankedMemRefType<int64_t> *M) {
+  printUnrankedMemRefMetaData(std::cout, *M);
+  int rank = M->rank;
+  void *ptr = M->descriptor;
+
+  switch (rank) {
+    MEMREF_CASE(int64_t, 0);
+    MEMREF_CASE(int64_t, 1);
+    MEMREF_CASE(int64_t, 2);
+    MEMREF_CASE(int64_t, 3);
+    MEMREF_CASE(int64_t, 4);
+  default:
+    assert(0 && "Unsupported rank to print");
+  }
+}
+
 extern "C" void _mlir_ciface_print_memref_i8(UnrankedMemRefType<int8_t> *M) {
   printUnrankedMemRefMetaData(std::cout, *M);
   int rank = M->rank;
@@ -56,6 +73,13 @@ extern "C" void _mlir_ciface_print_memref_f32(UnrankedMemRefType<float> *M) {
   default:
     assert(0 && "Unsupported rank to print");
   }
+}
+
+extern "C" void print_memref_i64(int64_t rank, void *ptr) {
+  UnrankedMemRefType<int64_t> descriptor;
+  descriptor.rank = rank;
+  descriptor.descriptor = ptr;
+  _mlir_ciface_print_memref_i64(&descriptor);
 }
 
 extern "C" void print_memref_f32(int64_t rank, void *ptr) {

@@ -7,7 +7,7 @@
 // =============================================================================
 
 #include "mlir/Dialect/OpenACC/OpenACC.h"
-#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -161,7 +161,7 @@ static void printFormattedAttr(OpTy &op, OpAsmPrinter &printer,
 //===----------------------------------------------------------------------===//
 
 static ParseResult parsePrivate(OpAsmParser &parser,
-                                SmallVectorImpl<OpAsmParser::OperandType> &args, 
+                                SmallVectorImpl<OpAsmParser::OperandType> &args,
                                 SmallVectorImpl<Type> &argTypes) {
   if(failed(parser.parseOptionalKeyword(ParallelOp::getPrivateKeyword())))
     return success();
@@ -196,7 +196,8 @@ static ParseResult parseParallelOp(OpAsmParser &parser, OperationState &state) {
   SmallVector<Type, 8> argTypes;
 
   // num_gangs(value)?
-  if (failed(parseFormattedAttr(parser, state, ParallelOp::getNumGangsAttrName())))
+  if (failed(parseFormattedAttr(parser, state, 
+                                ParallelOp::getNumGangsAttrName())))
     return failure();
 
   // num_worker(value)?
@@ -205,13 +206,18 @@ static ParseResult parseParallelOp(OpAsmParser &parser, OperationState &state) {
     return failure();
 
   // private()?
-  
   if (failed(parsePrivate(parser, entryArgs, argTypes)))
-    return failure();    
+    return failure();
+
+  for (auto operand_type : llvm::zip(entryArgs, argTypes)) {
+    if (parser.resolveOperand(std::get<0>(operand_type),
+                              std::get<1>(operand_type), state.operands))
+      return failure();
+  }
 
   Builder &builder = parser.getBuilder();
   state.addAttribute(ParallelOp::getNumGangPrivateAttrName(),
-                      builder.getI64IntegerAttr(argTypes.size()));
+                     builder.getI64IntegerAttr(entryArgs.size()));
 
   // Parallel op region
   if (failed(parseRegions<ParallelOp>(parser, state)))
@@ -221,30 +227,30 @@ static ParseResult parseParallelOp(OpAsmParser &parser, OperationState &state) {
   if (failed(parseOptionalAttributes(parser, state)))
     return failure();
 
-  
-
   return success();
 }
 
 static void printParallelOp(ParallelOp &op, OpAsmPrinter &printer) {
   printer << ParallelOp::getOperationName();
 
-  printFormattedAttr(op, printer, ParallelOp::getNumGangsAttrName());
-  printFormattedAttr(op, printer, ParallelOp::getNumWorkersAttrName());
-
-  // 
-  ArrayRef<BlockArgument> privates = op.getGangPrivates();
-  if(!privates.empty()) {
-    printer << " " << ParallelOp::getPrivateKeyword() << "(";
-    // TODO segfault
-    // interleaveComma(privates, printer,
-    //     [&printer](BlockArgument v) { printer << v << " : " << v.getType(); });
-    printer << ")";
-  }
-
+  // Attribute printed differently after op name
   SmallVector<StringRef, 2> formattedAttrs;
   formattedAttrs.push_back(ParallelOp::getNumGangsAttrName());
   formattedAttrs.push_back(ParallelOp::getNumWorkersAttrName());
+
+  for(auto attr : formattedAttrs) {
+    printFormattedAttr(op, printer, attr);
+  }
+
+  // Gang private list
+  if (op.getNumGangPrivates() > 0) {
+    printer << " " << ParallelOp::getPrivateKeyword() << "(";
+    auto privates = op.getGangPrivates();
+    mlir::interleaveComma(privates, printer, [&](auto it) {
+      printer << it << ":" << it.getType();      
+    });
+    printer << ")";
+  }
 
   printer.printRegion(op.getBody(), false, false);
 

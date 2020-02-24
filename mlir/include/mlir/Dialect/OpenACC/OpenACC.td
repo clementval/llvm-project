@@ -71,6 +71,8 @@ def ParallelOp : OpenACC_Op<"parallel",
     ];
     let parser = [{ return parseParallelOp(parser, result); }];
     let printer = [{ printParallelOp(*this, p); }];
+
+    let arguments = (ins Variadic<AnyType>:$privateArgs);
     let regions = (region SizedRegion<1>:$region);
     let verifier = [{ return success(); }];
     let skipDefaultBuilders = 1;
@@ -92,10 +94,8 @@ def ParallelOp : OpenACC_Op<"parallel",
               .getInt();
         }
 
-        ArrayRef<BlockArgument> getGangPrivates() {
-          auto begin = getBody().front().args_begin();
-          auto end = std::next(begin, getNumGangPrivates());
-          return {begin, end};
+        iterator_range<Operation::operand_iterator> getGangPrivates() {
+          return getOperands().take_front(getNumGangPrivates());
         }
 
         /// Returns the number of gangs defined for the parallel op
