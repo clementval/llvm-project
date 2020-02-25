@@ -156,10 +156,6 @@ static void printFormattedAttr(OpTy &op, OpAsmPrinter &printer,
   }
 }
 
-//===----------------------------------------------------------------------===//
-// ParallelOp
-//===----------------------------------------------------------------------===//
-
 static ParseResult parsePrivate(OpAsmParser &parser,
                                 SmallVectorImpl<OpAsmParser::OperandType> &args,
                                 SmallVectorImpl<Type> &argTypes) {
@@ -186,6 +182,10 @@ static ParseResult parsePrivate(OpAsmParser &parser,
 
   return parser.parseRParen();
 }
+
+//===----------------------------------------------------------------------===//
+// ParallelOp
+//===----------------------------------------------------------------------===//
 
 // Parse acc.parallel operation
 // operation := `acc.parallel` `num_gangs(value)?` `num_workers(value)?`

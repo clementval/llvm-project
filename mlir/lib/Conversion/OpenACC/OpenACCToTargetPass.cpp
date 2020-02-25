@@ -538,6 +538,65 @@ static void applyTransformation(acc::LoopOp accLoopOp) {
   accLoopOp.erase();
 }
 
+
+static void applyGangPrivateList(gpu::GPUFuncOp outlinedParallelRegion,
+                                 acc::ParallelOp accParallelOp, 
+                                 llvm::SetVector<Value> &operands) {
+  if(accParallelOp.getNumGangPrivates() == 0)
+    return;
+
+  OpBuilder builder(outlinedParallelRegion.getBody());
+
+  for(auto p : accParallelOp.getGangPrivates()) {
+    auto type = p.getType().dyn_cast<MemRefType>();
+            
+    // Allocate the gang private value  
+    Value newPrivateValue = builder.create<AllocOp>(accParallelOp.getLoc(), 
+        MemRefType::get(type.getShape(), type.getElementType(), 
+        /*affineMapComposition=*/{}, 
+        gpu::GPUDialect::getWorkgroupAddressSpace()));
+
+    unsigned i = 0; // Look for which argument maps this operand
+    Value operand;
+    for(auto op : operands) {
+      if(op == p) {
+        operand = op;
+        break;
+      }
+      ++i;
+    }
+          
+    Block &entryBlock = outlinedParallelRegion.body().front();
+    replaceAllUsesInRegionWith(entryBlock.getArgument(i), newPrivateValue,
+        outlinedParallelRegion.getBody());        
+  }
+}
+
+// static void applyGangPrivateList(Location loc, ArrayRef<OperandType> operands, 
+//                                  ) {
+
+//                                    auto type = p.getType().dyn_cast<MemRefType>();
+// // Allocate the gang private value  
+//   Value newPrivateValue = builder.create<AllocOp>(loc, 
+//               MemRefType::get(type.getShape(), type.getElementType(), 
+//               /*affineMapComposition=*/{}, 
+//               gpu::GPUDialect::getWorkgroupAddressSpace()));
+
+//           unsigned i = 0; // Look for which argument maps this operand
+//           Value operand;
+//           for(auto op : operands) {
+//             if(op == p) {
+//               operand = op;
+//               break;
+//             }
+//             ++i;
+//           }
+          
+//           Block &entryBlock = outlinedParallelRegionKernel.body().front();
+//           replaceAllUsesInRegionWith(entryBlock.getArgument(i), newPrivateValue, 
+//               outlinedParallelRegionKernel.getBody());
+// }
+
 void OpenACCToTargetLoweringPass::runOnModule() {
 
   ConversionTarget target(getContext());
@@ -571,11 +630,12 @@ void OpenACCToTargetLoweringPass::runOnModule() {
         applyTransformation(accLoopOp);
       });
 
-
-
       auto outlinedParallelRegion = outlineParallelRegion(parallelOp, operands);
       auto outlinedParallelRegionKernel =
           convertOutlinedParallelRegionToKernel(outlinedParallelRegion);
+
+      applyGangPrivateList(outlinedParallelRegionKernel, parallelOp, operands);
+
       auto kernelModule =
           createKernelModule(outlinedParallelRegionKernel, symbolTable);
       symbolTable.insert(kernelModule, insertPt);
