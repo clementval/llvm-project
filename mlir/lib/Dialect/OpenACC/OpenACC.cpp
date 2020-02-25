@@ -347,7 +347,7 @@ struct OpenACCLoopEmptyConstructFolder : public OpRewritePattern<acc::LoopOp> {
   PatternMatchResult matchAndRewrite(acc::LoopOp loopOp,
                                      PatternRewriter &rewriter) const override {
     // Check that the body only contains a terminator.
-    if (!has_single_element(loopOp.getBody()))
+    if (!has_single_element(loopOp.getBody().front()))
       return matchFailure();
     rewriter.eraseOp(loopOp);
     return matchSuccess();
