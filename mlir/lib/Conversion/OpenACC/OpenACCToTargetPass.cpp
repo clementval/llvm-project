@@ -565,37 +565,27 @@ static void applyGangPrivateList(gpu::GPUFuncOp outlinedParallelRegion,
       }
       ++i;
     }
-          
+
     Block &entryBlock = outlinedParallelRegion.body().front();
     replaceAllUsesInRegionWith(entryBlock.getArgument(i), newPrivateValue,
         outlinedParallelRegion.getBody());        
   }
 }
 
-// static void applyGangPrivateList(Location loc, ArrayRef<OperandType> operands, 
-//                                  ) {
-
-//                                    auto type = p.getType().dyn_cast<MemRefType>();
-// // Allocate the gang private value  
-//   Value newPrivateValue = builder.create<AllocOp>(loc, 
-//               MemRefType::get(type.getShape(), type.getElementType(), 
-//               /*affineMapComposition=*/{}, 
-//               gpu::GPUDialect::getWorkgroupAddressSpace()));
-
-//           unsigned i = 0; // Look for which argument maps this operand
-//           Value operand;
-//           for(auto op : operands) {
-//             if(op == p) {
-//               operand = op;
-//               break;
-//             }
-//             ++i;
-//           }
-          
-//           Block &entryBlock = outlinedParallelRegionKernel.body().front();
-//           replaceAllUsesInRegionWith(entryBlock.getArgument(i), newPrivateValue, 
-//               outlinedParallelRegionKernel.getBody());
-// }
+static void removeUslessArguments(gpu::GPUFuncOp outlinedParallelRegionKernel,
+                                  llvm::SetVector<Value> &operands) {
+  assert(outlinedParallelRegionKernel.getNumArguments() == operands.size() 
+      && "operands size must be the same as number of arguments");                                   
+  SmallVector<unsigned, 2> toDelete;
+  auto &firstBlock = outlinedParallelRegionKernel.getBody().front();
+  for(int i = firstBlock.getNumArguments() - 1; i >= 0; --i) {
+    Value arg = firstBlock.getArgument(i);
+    if(arg.use_empty()) {
+      firstBlock.eraseArgument(i);
+      operands.remove(operands[i]);
+    }
+  }
+}
 
 void OpenACCToTargetLoweringPass::runOnModule() {
 
@@ -617,6 +607,7 @@ void OpenACCToTargetLoweringPass::runOnModule() {
   auto m = getModule();
   SymbolTable symbolTable(m);
   bool modified = false;
+
   for (auto func : getModule().getOps<FuncOp>()) {
     Block::iterator insertPt(func.getOperation()->getNextNode());
 
@@ -624,7 +615,6 @@ void OpenACCToTargetLoweringPass::runOnModule() {
     m.walk([&](acc::ParallelOp parallelOp) {
       OpBuilder builder(parallelOp);
       llvm::SetVector<Value> operands;
-
 
       parallelOp.walk([&](acc::LoopOp accLoopOp) {
         applyTransformation(accLoopOp);
@@ -634,7 +624,10 @@ void OpenACCToTargetLoweringPass::runOnModule() {
       auto outlinedParallelRegionKernel =
           convertOutlinedParallelRegionToKernel(outlinedParallelRegion);
 
+      // parallel private
       applyGangPrivateList(outlinedParallelRegionKernel, parallelOp, operands);
+      removeUslessArguments(outlinedParallelRegionKernel, operands);
+
 
       auto kernelModule =
           createKernelModule(outlinedParallelRegionKernel, symbolTable);
