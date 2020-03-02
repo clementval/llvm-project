@@ -477,8 +477,9 @@ createLaunchParallelRegion(acc::ParallelOp parallelOp,
   auto callOutlinedParallelRegionKernel = builder.create<gpu::LaunchFuncOp>(
       parallelOp.getLoc(), outlinedParallelRegionKernel, numGangs, constOne,
       constOne, constOne, constOne, constOne, operands);
-  inlineBeneficiaryOps(outlinedParallelRegionKernel,
-                       callOutlinedParallelRegionKernel);
+  // TODO FRIDAY look here       
+  // inlineBeneficiaryOps(outlinedParallelRegionKernel,
+  //                      callOutlinedParallelRegionKernel);
   return callOutlinedParallelRegionKernel;
 }
 
@@ -541,7 +542,7 @@ static void createSeqBlock(OpBuilder &builder, Location loc,
   // Move operation inside the newly created if-then region
   auto &thenRegion = ifOp.thenRegion();
   op->moveBefore(thenRegion.back().getTerminator());
-  
+
   // Add a barrier to sync all worker after the seq loop
   builder.setInsertionPointAfter(ifOp);
   builder.create<gpu::BarrierOp>(loc);
@@ -552,8 +553,8 @@ static void mapLoopToGrid(acc::LoopOp accLoopOp,
   if (auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front().front())) {
     OpBuilder builder(forOp);
     Location loc(accLoopOp.getLoc());
-    if(accLoopOp.hasSeqAttr()) {
-      createSeqBlock(builder, loc, indexOps, forOp.getOperation());
+    if(accLoopOp.isSeq()) {
+      // Nothing done now. 
     } else if(accLoopOp.isGangVector() || accLoopOp.getExecutionMappingAttr() ==
         acc::OpenACCExecMapping::NONE) {
 
@@ -585,6 +586,34 @@ static void mapLoopToGrid(acc::LoopOp accLoopOp,
   accLoopOp.erase();
 }
 
+static void transformGangRedundant(acc::GangRedundantOp accGangRedundantOp, 
+                                   SmallVector<Value, 4> &indexOps) {
+
+  OpBuilder builder(accGangRedundantOp);
+  Location loc = accGangRedundantOp.getLoc();
+  
+  
+  // if threadIdx.x == 0 then
+  Value const0 = builder.create<ConstantOp>(
+    loc, builder.getIntegerAttr(builder.getIndexType(), 0));
+  Value isThread0 = builder.create<CmpIOp>(
+   loc, CmpIPredicate::eq, indexOps[THREAD_ID_X], const0);
+  
+  auto ifOp = builder.create<loop::IfOp>(loc, isThread0, false);
+
+  // Move operation inside the newly created if-then region
+  auto &thenRegion = ifOp.thenRegion();
+  
+  // accGangRedundantOp.walk([](acc::GangRedundantEndOp op) {
+  //   op.erase();
+  // });
+
+  thenRegion.takeBody(accGangRedundantOp.getBody());
+  // Add a barrier to sync all worker after the seq loop
+  builder.setInsertionPointAfter(ifOp);
+  accGangRedundantOp.erase();
+}
+
 
 static void applyGangPrivateList(gpu::GPUFuncOp outlinedParallelRegion,
                                  acc::ParallelOp accParallelOp, 
@@ -592,18 +621,31 @@ static void applyGangPrivateList(gpu::GPUFuncOp outlinedParallelRegion,
   if(accParallelOp.getNumGangPrivates() == 0)
     return;
   
+  // assert(accParallelOp.getNumGangPrivates() == privates.size() 
+  //     && "Number of private variable doesn't match");
+  // OpBuilder builder(outlinedParallelRegion.getBody());
+  // for(auto p : accParallelOp.getGangPrivates()) {
+  //   auto type = p.getType().dyn_cast<MemRefType>();
+  //   assert(type && type.hasStaticShape() && "can only privatize memrefs");
+  //   auto newPrivate = builder.create<AllocOp>(accParallelOp.getLoc(),
+  //       MemRefType::Builder(type).setMemorySpace(
+  //         gpu::GPUDialect::getWorkgroupAddressSpace()));
+  //   replaceAllUsesInRegionWith(p, newPrivate,
+  //       outlinedParallelRegion.getBody());
+  // }
+
   assert(accParallelOp.getNumGangPrivates() == privates.size() 
       && "Number of private variable doesn't match");
-  OpBuilder builder(outlinedParallelRegion.getBody());
+
   for(auto p : accParallelOp.getGangPrivates()) {
     auto type = p.getType().dyn_cast<MemRefType>();
     assert(type && type.hasStaticShape() && "can only privatize memrefs");
-    auto newPrivate = builder.create<AllocOp>(accParallelOp.getLoc(),
-        MemRefType::Builder(type).setMemorySpace(
-          gpu::GPUDialect::getWorkgroupAddressSpace()));
-    replaceAllUsesInRegionWith(p, newPrivate,
-        outlinedParallelRegion.getBody());
-  }
+
+    Value newPrivate = outlinedParallelRegion.addWorkgroupAttribution(
+        type.getShape(), type.getElementType());
+    
+    replaceAllUsesInRegionWith(p, newPrivate, outlinedParallelRegion.getBody());
+  } 
 }
 
 static void removeUslessArguments(gpu::GPUFuncOp outlinedParallelRegionKernel,
@@ -650,6 +692,7 @@ void OpenACCToTargetLoweringPass::runOnModule() {
   // target.addLegalOp<acc::ParallelEndOp>();
   target.addLegalOp<acc::LoopOp>();
   target.addLegalOp<acc::LoopEndOp>();
+  target.addLegalOp<acc::GangRedundantEndOp>();
 
   // If operation is considered legal the rewrite pattern in not called.
   OwningRewritePatternList patterns;
@@ -678,6 +721,10 @@ void OpenACCToTargetLoweringPass::runOnModule() {
       injectGpuIndexOperations(parallelOp.getLoc(),
           outlinedParallelRegionKernel.getBody(), indexOps);
 
+      outlinedParallelRegionKernel.walk([&](acc::GangRedundantOp accGangRedundantOp) {
+        transformGangRedundant(accGangRedundantOp, indexOps);
+      });   
+
       outlinedParallelRegionKernel.walk([&](acc::LoopOp accLoopOp) {
         mapLoopToGrid(accLoopOp, indexOps);
       });
@@ -685,12 +732,15 @@ void OpenACCToTargetLoweringPass::runOnModule() {
       // parallel private
       applyGangPrivateList(outlinedParallelRegionKernel, parallelOp, 
           gangPrivates);
-      removeUslessArguments(outlinedParallelRegionKernel, operands);
+      //removeUslessArguments(outlinedParallelRegionKernel, operands);
 
       auto kernelModule =
           createKernelModule(outlinedParallelRegionKernel, symbolTable);
       symbolTable.insert(kernelModule, insertPt);
 
+      // for(Value p : gangPrivates) {
+      //   operands.insert(p); 
+      // }
       auto callOutlinedParallelRegion = createLaunchParallelRegion(
           parallelOp, outlinedParallelRegionKernel, operands.getArrayRef());
 

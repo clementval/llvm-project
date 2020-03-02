@@ -45,30 +45,6 @@ static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
   return success();
 }
 
-/*
-template <typename StructureOp>
-static ParseResult parseRegionOp(OpAsmParser &parser, OperationState &state,
-                                 unsigned int nRegions = 1) {
-    llvm::SmallVector<Region *, 2> regions;
-    for (unsigned int i = 0; i < nRegions; ++i)
-        regions.push_back(state.addRegion());
-    for (auto &region : regions) {
-        if (parser.parseRegion(*region, */
-/*arguments=*//*
-{}, */
-/*argTypes=*/ /*
- {}))
-             return failure();
-         StructureOp::ensureTerminator(*region, parser.getBuilder(),
- state.location);
-     }
-     if (succeeded(parser.parseOptionalKeyword("attributes"))) {
-         if (parser.parseOptionalAttrDict(state.attributes))
-             return failure();
-     }
-     return success();
- }*/
-
 static void printNoIOOp(Operation *op, OpAsmPrinter &printer) {
   printer << op->getName();
   printer.printOptionalAttrDict(op->getAttrs());
@@ -96,6 +72,12 @@ static ParseResult parseRegionOp(OpAsmParser &parser, OperationState &state,
   }
 
   return success();
+}
+
+static void printGangRedundantOp(GangRedundantOp &op, OpAsmPrinter &printer) {
+  printer << GangRedundantOp::getOperationName();
+  printer.printRegion(op.getBody(), false, false);
+  printer.printOptionalAttrDictWithKeyword(op.getAttrs(), {});
 }
 
 template <typename StructureOp>
@@ -241,6 +223,8 @@ static void printParallelOp(ParallelOp &op, OpAsmPrinter &printer) {
   for(auto attr : formattedAttrs) {
     printFormattedAttr(op, printer, attr);
   }
+
+  formattedAttrs.push_back(ParallelOp::getNumGangPrivateAttrName());
 
   // Gang private list
   if (op.getNumGangPrivates() > 0) {
