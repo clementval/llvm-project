@@ -23,34 +23,32 @@ get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 set(LIBS
   ${dialect_libs}
   ${conversion_libs}
-  MLIROpenACC
-  MLIROpenACCPasses
-   MLIRLoopOpsTransforms
-     MLIRLoopAnalysis
-       MLIRAnalysis
-         MLIRDialect
-	   MLIREDSC
-	     MLIROptLib
-	       MLIRParser
-	         MLIRPass
-		   MLIRQuantizerFxpMathConfig
-		     MLIRQuantizerSupport
-		       MLIRQuantizerTransforms
-		         MLIRSPIRV
-			   MLIRSPIRVTestPasses
-			     MLIRSPIRVTransforms
-			       MLIRTransforms
-			         MLIRTransformUtils
-				   MLIRTestDialect
-				     MLIRTestIR
-				       MLIRTestPass
-				         MLIRTestTransforms
-					   MLIRSupport
-					     MLIRIR
-					       MLIROptLib
-					         LLVMSupport
-						   LLVMCore
-						     LLVMAsmParser
+  MLIRLoopOpsTransforms
+  MLIRLoopAnalysis
+  MLIRAnalysis
+  MLIRDialect
+	MLIREDSC
+	MLIROptLib
+	MLIRParser
+	MLIRPass
+	MLIRQuantizerFxpMathConfig
+	MLIRQuantizerSupport
+	MLIRQuantizerTransforms
+	MLIRSPIRV
+	MLIRSPIRVTestPasses
+	MLIRSPIRVTransforms
+	MLIRTransforms
+	MLIRTransformUtils
+	MLIRTestDialect
+	MLIRTestIR
+	MLIRTestPass
+	MLIRTestTransforms
+  MLIRSupport
+  MLIRIR
+	MLIROptLib
+	LLVMSupport
+	LLVMCore
+	LLVMAsmParser
 )
 
 add_llvm_tool(mlir-opt

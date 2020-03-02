@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPU.h"
-#include "mlir/Conversion/OpenACC/ConvertOpenACCToGPU.h"
+#include "mlir/Conversion/OpenACCToGPU/ConvertOpenACCToGPU.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
@@ -146,7 +146,7 @@ static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp,
     OpBuilder builder(forOp);
     Location loc(forOp.getLoc());
 
-    if (accLoopOp.hasSeqAttr()) { // Loop has to be exectued sequentially
+    if (accLoopOp.isSeq()) { // Loop has to be exectued sequentially
       // Create if (blockId.x == 0 && threadId.x == 0) then { do work }
       Value const0 = builder.create<ConstantOp>(
           loc, builder.getIntegerAttr(builder.getIndexType(), 0));
@@ -263,7 +263,7 @@ createGPULaunchForParallelRegion(acc::ParallelOp parallelOp) {
       hoistOpBeforeOperation(parallelOp, accLoopOp);
     else
       hoistOpBeforeOperation(accLoopOp, accLoopOp);
-    if(!accLoopOp.hasSeqAttr()) {
+    if(!accLoopOp.isSeq()) {
       gatherForOp(accLoopOp, forOps);
     }
   });

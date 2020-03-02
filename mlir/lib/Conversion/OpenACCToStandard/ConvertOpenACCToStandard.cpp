@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Conversion/OpenACC/ConvertOpenACCToSeq.h"
+#include "mlir/Conversion/OpenACCToStandard/ConvertOpenACCToStandard.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/OpenACC/OpenACC.h"
@@ -94,4 +94,5 @@ std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertOpenACCToSeqPass() {
 
 
 static PassRegistration<OpenACCToSeqConversionPass>
-    pass("convert-openacc-to-seq", "Convert OpenACC to sequential execution");
+    pass("convert-openacc-to-standard", 
+    "Convert OpenACC to standard sequential execution");

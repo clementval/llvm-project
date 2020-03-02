@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPU.h"
-#include "mlir/Conversion/OpenACC/ConvertOpenACCToTarget.h"
+#include "mlir/Conversion/OpenACCToGPU/ConvertOpenACCToTarget.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"

@@ -18,30 +18,30 @@ include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
 def OpenACC_Dialect : Dialect {
-    let name = "acc";
+  let name = "acc";
 
-    let description = [{
-        An OpenACC dialect for MLIR.
+  let description = [{
+    An OpenACC dialect for MLIR.
 
-        This dialect models the construct from the OpenACC directive language.
-    }];
+    This dialect models the construct from the OpenACC directive language.
+  }];
 
   let cppNamespace = "acc";
 }
 
 // Base class for Loop dialect ops.
 class OpenACC_Op<string mnemonic, list<OpTrait> traits = []> :
-    Op<OpenACC_Dialect, mnemonic, traits> {
+  Op<OpenACC_Dialect, mnemonic, traits> {
 
-    // For every standard op, there needs to be a:
-    //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
-    //   * LogicalResult verify(${C++ class of Op} op)
-    //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
-    //                                         OperationState &result)
-    // functions.
-    let printer = [{ return ::print(p, *this); }];
-    let verifier = [{ return ::verify(*this); }];
-    let parser = [{ return ::parse$cppClass(parser, result); }];
+  // For every standard op, there needs to be a:
+  //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
+  //   * LogicalResult verify(${C++ class of Op} op)
+  //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
+  //                                         OperationState &result)
+  // functions.
+  let printer = [{ return ::print(p, *this); }];
+  let verifier = [{ return ::verify(*this); }];
+  let parser = [{ return ::parse$cppClass(parser, result); }];
 }
 
 class OpenACC_ScopeVerifier<string opName> : PredOpTrait<
@@ -56,159 +56,192 @@ def InParallelScope : OpenACC_ScopeVerifier<"ParallelOp">;
 
 def ParallelOp : OpenACC_Op<"parallel",
                             [SingleBlockImplicitTerminator<"ParallelEndOp">]> {
-    let summary = "parallel construct";
-    let description = [{
-        The "acc.parallel" operation represents a parallel construct block. It has
-        one region capturing the parallel block.
+  let summary = "parallel construct";
+  let description = [{
+    The "acc.parallel" operation represents a parallel construct block. It has
+    one region capturing the parallel block.
 
-        acc.parallel {
-           ... // body
-        }
-    }];
+    acc.parallel {
+      ... // body
+    }
+  }];
 
-    let builders = [
-      OpBuilder<"Builder *, OperationState &">
-    ];
-    let parser = [{ return parseParallelOp(parser, result); }];
-    let printer = [{ printParallelOp(*this, p); }];
+  let builders = [OpBuilder<"Builder *, OperationState &">];
+  let parser = [{ return parseParallelOp(parser, result); }];
+  let printer = [{ printParallelOp(*this, p); }];
 
-    let arguments = (ins Variadic<AnyType>:$privateArgs);
-    let regions = (region SizedRegion<1>:$region);
-    let verifier = [{ return success(); }];
-    let skipDefaultBuilders = 1;
+  let arguments = (ins Variadic<AnyType>:$privateArgs);
+  let regions = (region SizedRegion<1>:$region);
+  let verifier = [{ return success(); }];
+  let skipDefaultBuilders = 1;
 
-    let extraClassDeclaration = [{
+  let extraClassDeclaration = [{
 
-        Region &getBody() { return this->getOperation()->getRegion(0); }
+    Region &getBody() { return this->getOperation()->getRegion(0); }
 
-        static StringRef getNumGangsAttrName() { return "num_gangs"; }
-        static StringRef getNumWorkersAttrName() { return "num_workers"; }
-        static StringRef getPrivateKeyword() { return "private"; }
-        static StringRef getNumGangPrivateAttrName() {
-          return "gang_private";
-        }
+    static StringRef getNumGangsAttrName() { return "num_gangs"; }
+    static StringRef getNumWorkersAttrName() { return "num_workers"; }
+    static StringRef getPrivateKeyword() { return "private"; }
+    static StringRef getNumGangPrivateAttrName() {
+      return "gang_private";
+    }
 
-        /// Returns the number of gang private.
-        unsigned getNumGangPrivates() {
-          return getAttrOfType<IntegerAttr>(getNumGangPrivateAttrName())
-              .getInt();
-        }
+    /// Returns the number of gang private.
+    unsigned getNumGangPrivates() {
+      return getAttrOfType<IntegerAttr>(getNumGangPrivateAttrName())
+          .getInt();
+    }
 
-        iterator_range<Operation::operand_iterator> getGangPrivates() {
-          return getOperands().take_front(getNumGangPrivates());
-        }
+    iterator_range<Operation::operand_iterator> getGangPrivates() {
+      return getOperands().take_front(getNumGangPrivates());
+    }
 
-        /// Returns the number of gangs defined for the parallel op
-        unsigned getNumGangs() {
-          return getAttrOfType<IntegerAttr>(getNumGangsAttrName()) != nullptr 
-              ? getAttrOfType<IntegerAttr>(getNumGangsAttrName()).getInt() 
-              : 1;
-        }
+    /// Returns the number of gangs defined for the parallel op
+    unsigned getNumGangs() {
+      return getAttrOfType<IntegerAttr>(getNumGangsAttrName()) != nullptr 
+          ? getAttrOfType<IntegerAttr>(getNumGangsAttrName()).getInt() 
+          : 1;
+    }
 
-        /// Returns the number of workers defined for the parallel op
-        unsigned getNumWorkers() {
-          return 
-              getAttrOfType<IntegerAttr>(getNumWorkersAttrName()) != nullptr
-              ? getAttrOfType<IntegerAttr>(getNumWorkersAttrName()).getInt()
-              : 1;
-        }
-
-        
-    }];
-
+    /// Returns the number of workers defined for the parallel op
+    unsigned getNumWorkers() {
+      return 
+          getAttrOfType<IntegerAttr>(getNumWorkersAttrName()) != nullptr
+          ? getAttrOfType<IntegerAttr>(getNumWorkersAttrName()).getInt()
+          : 1;
+    }   
+  }];
 }
 
 def ParallelEndOp : OpenACC_Op<"_parallel_end", [Terminator]> {
-    let arguments = (ins);
-    let results = (outs);
+  let arguments = (ins);
+  let results = (outs);
 
-    let parser = [{ return parseNoIOOp(parser, result); }];
-    let printer = [{ printNoIOOp(getOperation(), p); }];
-    let verifier = [{ return success(); }];
+  let parser = [{ return parseNoIOOp(parser, result); }];
+  let printer = [{ printNoIOOp(getOperation(), p); }];
+  let verifier = [{ return success(); }];
+}
+
+def GangRedundantOp : OpenACC_Op<"gang_redundant",
+                            [SingleBlockImplicitTerminator<"GangRedundantEndOp">]> {
+  let summary = "gang redundant";
+  let description = [{
+    The "acc.gang_redundant" operation represents a gang redundant construct 
+    block. It has one region capturing the gang redundant block.
+
+    acc.gang_redundant {
+      ... // body
+    }
+  }];
+
+  let builders = [
+    OpBuilder<"Builder *, OperationState &">
+  ];
+  let parser = [{ return parseRegionOp<GangRedundantOp>(parser, result); }];
+  let printer = [{ printGangRedundantOp(*this, p); }];
+
+  let arguments = (ins);
+  let regions = (region SizedRegion<1>:$region);
+  let verifier = [{ return success(); }];
+  let skipDefaultBuilders = 1;
+
+  let extraClassDeclaration = [{
+    Region &getBody() { return this->getOperation()->getRegion(0); } 
+  }];
+}
+
+def GangRedundantEndOp : OpenACC_Op<"_gang_redundant_end", [Terminator]> {
+  let arguments = (ins);
+  let results = (outs);
+  let parser = [{ return parseNoIOOp(parser, result); }];
+  let printer = [{ printNoIOOp(getOperation(), p); }];
+  let verifier = [{ return success(); }];
 }
 
 def LoopOp : OpenACC_Op<"loop",
                         [SingleBlockImplicitTerminator<"LoopEndOp">]> {
-    let summary = "loop construct";
-    let description = [{
-        The "acc.loop"
-    }];
+  let summary = "loop construct";
+  let description = [{
+    The "acc.loop"
+  }];
 
-    let builders = [OpBuilder<"Builder *, OperationState &">];
+  let builders = [OpBuilder<"Builder *, OperationState &">];
 
-    let parser = [{ return parseLoopOp(parser, result); }];
-    let printer = [{ printLoopOp(*this, p); }];
+  let parser = [{ return parseLoopOp(parser, result); }];
+  let printer = [{ printLoopOp(*this, p); }];
 
-    let regions = (region SizedRegion<1>:$region);
-    let verifier = [{ return success(); }];
-    let skipDefaultBuilders = 1;
-    let hasCanonicalizer = 1;
+  let regions = (region SizedRegion<1>:$region);
+  let verifier = [{ return success(); }];
+  let skipDefaultBuilders = 1;
+  let hasCanonicalizer = 1;
 
-    let extraClassDeclaration = [{
-        Region &getBody() { return this->getOperation()->getRegion(0); }
+  let extraClassDeclaration = [{
+    Region &getBody() { return this->getOperation()->getRegion(0); }
 
-        static StringRef getExecutionMappingAttrName() { return "exec_mapping"; }
-        static StringRef getCollapseAttrName() { return "collapse"; }
-        static StringRef getGangAttrName() { return "gang"; }
-        static StringRef getSeqAttrName() { return "seq"; }
-        static StringRef getVectorAttrName() { return "vector"; }
-        static StringRef getWorkerAttrName() { return "worker"; }
+    static StringRef getExecutionMappingAttrName() { 
+      return "exec_mapping"; 
+    }
+    static StringRef getCollapseAttrName() { return "collapse"; }
+    static StringRef getGangAttrName() { return "gang"; }
+    static StringRef getSeqAttrName() { return "seq"; }
+    static StringRef getVectorAttrName() { return "vector"; }
+    static StringRef getWorkerAttrName() { return "worker"; }
 
-        bool hasCollapseAttr() {
-            return getAttrOfType<IntegerAttr>(getCollapseAttrName()) != nullptr;
-        }
+    bool hasCollapseAttr() {
+      return getAttrOfType<IntegerAttr>(getCollapseAttrName()) != nullptr;
+    }
 
-        unsigned getCollapse() {
-          return 
-              getAttrOfType<IntegerAttr>(getCollapseAttrName()) != nullptr
-              ? getAttrOfType<IntegerAttr>(getCollapseAttrName()).getInt()
-              : 1;
-        }
+    unsigned getCollapse() {
+      return 
+          getAttrOfType<IntegerAttr>(getCollapseAttrName()) != nullptr
+            ? getAttrOfType<IntegerAttr>(getCollapseAttrName()).getInt()
+            : 1;
+    }
 
-        unsigned getExecutionMappingAttr() {
-          return 
-              getAttrOfType<IntegerAttr>(getExecutionMappingAttrName()) != nullptr
-              ? getAttrOfType<IntegerAttr>(getExecutionMappingAttrName()).getInt()
-              : 0;
-        }
+    unsigned getExecutionMappingAttr() {
+      return 
+          getAttrOfType<IntegerAttr>(getExecutionMappingAttrName()) != nullptr
+            ? getAttrOfType<IntegerAttr>(getExecutionMappingAttrName()).getInt()
+            : 0;
+    }
 
-        bool isGangVector() {
-          unsigned execMapping = getExecutionMappingAttr();
-          return (execMapping & OpenACCExecMapping::GANG_VECTOR) 
-              == OpenACCExecMapping::GANG_VECTOR 
-              || execMapping == OpenACCExecMapping::NONE;
-        }
+    bool isGangVector() {
+      unsigned execMapping = getExecutionMappingAttr();
+      return (execMapping & OpenACCExecMapping::GANG_VECTOR) 
+          == OpenACCExecMapping::GANG_VECTOR 
+            || execMapping == OpenACCExecMapping::NONE;
+    }
         
-        bool isGang() {
-          unsigned execMapping = getExecutionMappingAttr();
-          return (execMapping & OpenACCExecMapping::GANG) == OpenACCExecMapping::GANG;
-        }
+    bool isGang() {
+      unsigned execMapping = getExecutionMappingAttr();
+      return (execMapping & OpenACCExecMapping::GANG) == OpenACCExecMapping::GANG;
+    }
 
-        bool isVector() {
-          unsigned execMapping = getExecutionMappingAttr();
-          return (execMapping & OpenACCExecMapping::VECTOR) == OpenACCExecMapping::VECTOR;
-        }
+    bool isVector() {
+      unsigned execMapping = getExecutionMappingAttr();
+      return (execMapping & OpenACCExecMapping::VECTOR) == OpenACCExecMapping::VECTOR;
+    }
 
-        bool isWorker() {
-          unsigned execMapping = getExecutionMappingAttr();
-          return (execMapping & OpenACCExecMapping::WORKER) == OpenACCExecMapping::WORKER;
-        }
+    bool isWorker() {
+      unsigned execMapping = getExecutionMappingAttr();
+      return (execMapping & OpenACCExecMapping::WORKER) == OpenACCExecMapping::WORKER;
+    }
 
-        bool hasSeqAttr() {
-          UnitAttr seqAttr = getAttrOfType<UnitAttr>(getSeqAttrName());
-          return static_cast<bool>(seqAttr);
-        }
+    bool isSeq() {
+      UnitAttr seqAttr = getAttrOfType<UnitAttr>(getSeqAttrName());
+      return static_cast<bool>(seqAttr);
+    }
 
-    }];
+  }];
 }
 
 def LoopEndOp : OpenACC_Op<"_loop_end", [Terminator]> {
-    let arguments = (ins);
-    let results = (outs);
+  let arguments = (ins);
+  let results = (outs);
 
-    let parser = [{ return parseNoIOOp(parser, result); }];
-    let printer = [{ printNoIOOp(getOperation(), p); }];
-    let verifier = [{ return success(); }];
+  let parser = [{ return parseNoIOOp(parser, result); }];
+  let printer = [{ printNoIOOp(getOperation(), p); }];
+  let verifier = [{ return success(); }];
 }
 
 #endif // OPENACC_TD

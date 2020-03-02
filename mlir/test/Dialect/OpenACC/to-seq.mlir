@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s --convert-openacc-to-seq | FileCheck %s
+// RUN: mlir-opt %s --convert-openacc-to-standard | FileCheck %s
 
 func @compute(%A: memref<10x10xf32>, %B: memref<10x10xf32>, %C: memref<10x10xf32>) -> memref<10x10xf32> {
   %c0 = constant 0 : index
