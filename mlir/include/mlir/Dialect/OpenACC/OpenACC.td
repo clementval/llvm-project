@@ -96,17 +96,27 @@ def ParallelOp : OpenACC_Op<"parallel",
       return getOperands().take_front(getNumGangPrivates());
     }
 
+    /// Return true if the attribute num_gangs is defined.
+    bool hasNumGangs() {
+      return getAttrOfType<IntegerAttr>(getNumGangsAttrName()) != nullptr;
+    }
+
     /// Returns the number of gangs defined for the parallel op
     unsigned getNumGangs() {
-      return getAttrOfType<IntegerAttr>(getNumGangsAttrName()) != nullptr 
-          ? getAttrOfType<IntegerAttr>(getNumGangsAttrName()).getInt() 
+      return hasNumGangs() ? 
+          getAttrOfType<IntegerAttr>(getNumGangsAttrName()).getInt() 
           : 1;
     }
 
+    /// Return true if the attribute num_workers is defined.
+    bool hasNumWorkers() {
+      return getAttrOfType<IntegerAttr>(getNumWorkersAttrName()) != nullptr;
+    }
+
+
     /// Returns the number of workers defined for the parallel op
     unsigned getNumWorkers() {
-      return 
-          getAttrOfType<IntegerAttr>(getNumWorkersAttrName()) != nullptr
+      return hasNumWorkers()          
           ? getAttrOfType<IntegerAttr>(getNumWorkersAttrName()).getInt()
           : 1;
     }   
@@ -123,7 +133,7 @@ def ParallelEndOp : OpenACC_Op<"_parallel_end", [Terminator]> {
 }
 
 def GangRedundantOp : OpenACC_Op<"gang_redundant",
-                            [SingleBlockImplicitTerminator<"GangRedundantEndOp">]> {
+    [SingleBlockImplicitTerminator<"GangRedundantEndOp">]> {
   let summary = "gang redundant";
   let description = [{
     The "acc.gang_redundant" operation represents a gang redundant construct 
@@ -186,6 +196,7 @@ def LoopOp : OpenACC_Op<"loop",
     static StringRef getSeqAttrName() { return "seq"; }
     static StringRef getVectorAttrName() { return "vector"; }
     static StringRef getWorkerAttrName() { return "worker"; }
+    static StringRef getGangRedundantAttrName() { return "gang_redundant"; }
 
     bool hasCollapseAttr() {
       return getAttrOfType<IntegerAttr>(getCollapseAttrName()) != nullptr;
@@ -208,8 +219,7 @@ def LoopOp : OpenACC_Op<"loop",
     bool isGangVector() {
       unsigned execMapping = getExecutionMappingAttr();
       return (execMapping & OpenACCExecMapping::GANG_VECTOR) 
-          == OpenACCExecMapping::GANG_VECTOR 
-            || execMapping == OpenACCExecMapping::NONE;
+          == OpenACCExecMapping::GANG_VECTOR;
     }
         
     bool isGang() {
@@ -230,6 +240,11 @@ def LoopOp : OpenACC_Op<"loop",
     bool isSeq() {
       UnitAttr seqAttr = getAttrOfType<UnitAttr>(getSeqAttrName());
       return static_cast<bool>(seqAttr);
+    }
+
+    bool isGangRedundant() {
+      UnitAttr gangRedAttr = getAttrOfType<UnitAttr>(getGangRedundantAttrName());
+      return static_cast<bool>(gangRedAttr);
     }
 
   }];

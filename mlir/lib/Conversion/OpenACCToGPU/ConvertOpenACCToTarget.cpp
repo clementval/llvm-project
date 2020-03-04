@@ -44,13 +44,15 @@ struct ParallelOpOutling final : public OpRewritePattern<acc::ParallelOp> {
                                      PatternRewriter &rewriter) const override;
 };
 
-// struct LoopOpLowering final : public OpRewritePattern<acc::LoopOp> {
-//   using OpRewritePattern<acc::LoopOp>::OpRewritePattern;
 
-//   PatternMatchResult matchAndRewrite(acc::LoopOp loopOp,
-//                                      PatternRewriter &rewriter) const
-//                                      override;
-// };
+struct SequentialLoopOpNesting final : public OpRewritePattern<acc::LoopOp> {
+  using OpRewritePattern<acc::LoopOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(acc::LoopOp accLoopOp,
+                                     PatternRewriter &rewriter) const override;
+};
+
+
 
 template <typename TerminatorOp>
 struct TerminatorOpLowering final : public OpRewritePattern<TerminatorOp> {
@@ -138,11 +140,28 @@ ParallelOpOutling::matchAndRewrite(acc::ParallelOp parallelOp,
   return matchSuccess();
 }
 
+
 // PatternMatchResult
-// LoopOpLowering::matchAndRewrite(acc::LoopOp loopOp,
-//                                 PatternRewriter &rewriter) const {
-//   // Not used now
-//   return matchSuccess();
+// SequentialLoopOpNesting::matchAndRewrite(acc::LoopOp accLoopOp,
+//                                          PatternRewriter &rewriter) const {
+//   if(accLoopOp.isSeq()) {
+//     auto parentOp = accLoopOp.getParentOfType<acc::LoopOp>();
+//     if(!parentOp)
+//       return matchFailure();
+    
+//     auto gangRedundantOp = accLoopOp.getParentOfType<acc::GangRedundantOp>();
+//     if(gangRedundantOp)
+//       return matchFailure();
+
+//     Location loc = accLoopOp.getLoc();
+//     auto gangRedOp = rewriter.create<acc::GangRedundantOp>(loc);
+//     rewriter.setInsertionPointToStart(&gangRedOp.getBody().front());
+//     auto gangRedundantTerminator = rewriter.create<acc::GangRedundantEndOp>(loc);
+//     accLoopOp.getOperation()->moveBefore(gangRedundantTerminator);
+//     return matchSuccess();  
+//   }
+
+//   return matchFailure();
 // }
 
 template <typename OpTy>
@@ -386,6 +405,56 @@ static void extractRegionBeforeItself(OpTy baseOp) {
 //   return success();
 // }
 
+// Collapse `n` perfectly nested loops starting at `rootForOp`
+// New opeartion may be placed between in the accLoopOp region before
+// the forOp.
+static LogicalResult collapseNestedLoops(loop::ForOp rootForOp, 
+                                         acc::LoopOp accLoopOp) {
+  unsigned n = accLoopOp.getCollapse();
+  llvm::errs() << n << "\n";
+  // Looks for perfectly nested loops
+  SmallVector<loop::ForOp, 4> loops;
+  getPerfectlyNestedLoops(loops, rootForOp);
+  if (loops.size() < n) {
+    rootForOp.emitError("Not enough nested loops to collapse");
+    return failure();
+  }
+
+  // Collapse the n first loops of the nest
+  auto nest = llvm::makeMutableArrayRef(loops.data(), n);
+  coalesceLoops(nest);
+  return success();
+}
+
+static LogicalResult applyCollapseClause(acc::LoopOp accLoopOp) {
+  if (!accLoopOp.hasCollapseAttr())
+    return success();
+  if (auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front().front())) {
+    if(failed(collapseNestedLoops(forOp, accLoopOp)))
+      return failure();
+    accLoopOp.removeAttr(acc::LoopOp::getCollapseAttrName());
+  }
+  return success();
+}
+
+
+// Hoist opeartion inserted at the beginning of the LoopOp region until the 
+// ForOp outside of the LoopOp region.
+template <typename StructureOp> 
+static void hoistOpBeforeOperation(StructureOp &parentOp, 
+                                   acc::LoopOp &accLoopOp) {
+  SmallVector<Operation *, 5> toHoist;
+  for (auto &op : accLoopOp.getBody().front().getOperations()) {
+    if (isa<loop::ForOp>(op))
+      break;
+    toHoist.push_back(&op);
+  }
+
+  for (auto *op : toHoist) {
+    op->moveBefore(parentOp);
+  }
+}
+
 // TODO remove after inlineBeneficiaryOps is called in KernelOutlining
 static bool isInliningBeneficiary(Operation *op) {
   return isa<ConstantOp>(op) || isa<DimOp>(op);
@@ -449,7 +518,6 @@ convertOutlinedParallelRegionToKernel(FuncOp outlinedParallelRegion) {
   kernelFunc.setAttr(gpu::GPUDialect::getKernelFuncAttrName(),
                      builder.getUnitAttr());
   kernelFunc.body().takeBody(outlinedParallelRegion.getBody());
-  // injectGpuIndexOperations(loc, kernelFunc.body());
   kernelFunc.walk([](ReturnOp op) {
     OpBuilder replacer(op);
     replacer.create<gpu::ReturnOp>(op.getLoc());
@@ -465,19 +533,19 @@ createLaunchParallelRegion(acc::ParallelOp parallelOp,
                            gpu::GPUFuncOp outlinedParallelRegionKernel,
                            ValueRange operands) {
   OpBuilder builder(parallelOp);
-  Value constOne = builder.create<ConstantOp>(
-      parallelOp.getLoc(), builder.getIntegerAttr(builder.getIndexType(), 1));
+  Value constOne = builder.create<ConstantOp>(parallelOp.getLoc(), 
+      builder.getIntegerAttr(builder.getIndexType(), 1));
 
   Value numGangs = constOne;
-  if (parallelOp.getNumGangs() != 1)
-    numGangs = builder.create<ConstantOp>(
-        parallelOp.getLoc(), builder.getIntegerAttr(builder.getIndexType(),
-                                                    parallelOp.getNumGangs()));
+  if (parallelOp.hasNumGangs())
+    numGangs = builder.create<ConstantOp>(parallelOp.getLoc(), 
+        builder.getIntegerAttr(builder.getIndexType(),
+        parallelOp.getNumGangs()));
 
   auto callOutlinedParallelRegionKernel = builder.create<gpu::LaunchFuncOp>(
       parallelOp.getLoc(), outlinedParallelRegionKernel, numGangs, constOne,
       constOne, constOne, constOne, constOne, operands);
-  // TODO FRIDAY look here       
+  // TODO this seems to be broken
   // inlineBeneficiaryOps(outlinedParallelRegionKernel,
   //                      callOutlinedParallelRegionKernel);
   return callOutlinedParallelRegionKernel;
@@ -524,49 +592,53 @@ static constexpr unsigned BLOCK_ID_X = 0;
 static constexpr unsigned THREAD_ID_X = 1;
 static constexpr unsigned GRID_DIM_X = 2;
 static constexpr unsigned BLOCK_DIM_X = 3;
+static constexpr unsigned THREAD_ID_Y = 4;
+static constexpr unsigned BLOCK_DIM_Y = 5;
 
-static void createSeqBlock(OpBuilder &builder, Location loc, 
-                           SmallVector<Value, 4> &indexOps, Operation* op) {
-  assert(indexOps.size() == 4 && "Expecting 4 indexes");
 
-  // if blockIdx.x == 0 && threadIdx.x == 0 then
+
+static loop::IfOp createGangRedundantWrapper(OpBuilder &builder, Location loc, 
+                                           SmallVector<Value, 4> &indexOps) {
+  assert(indexOps.size() == 4 && "Expecting 4 indexes to map loop");
+
+  // if threadIdx.x == 0 then
   Value const0 = builder.create<ConstantOp>(
     loc, builder.getIntegerAttr(builder.getIndexType(), 0));
-  Value isBlock0 = builder.create<CmpIOp>(
-    loc, CmpIPredicate::eq, indexOps[BLOCK_ID_X], const0);
   Value isThread0 = builder.create<CmpIOp>(
    loc, CmpIPredicate::eq, indexOps[THREAD_ID_X], const0);
-  Value isSeqId = builder.create<AndOp>(loc, isBlock0, isThread0);
-  auto ifOp = builder.create<loop::IfOp>(loc, isSeqId, false);
-
-  // Move operation inside the newly created if-then region
-  auto &thenRegion = ifOp.thenRegion();
-  op->moveBefore(thenRegion.back().getTerminator());
+  auto ifOp = builder.create<loop::IfOp>(loc, isThread0, false);
 
   // Add a barrier to sync all worker after the seq loop
   builder.setInsertionPointAfter(ifOp);
   builder.create<gpu::BarrierOp>(loc);
+
+  return ifOp;
 }
 
 static void mapLoopToGrid(acc::LoopOp accLoopOp, 
-                          SmallVector<Value, 4> &indexOps) {
+                          SmallVector<Value, 4> &indexOps,
+                          SmallVector<loop::ForOp, 4> &forOps) {
+  assert(indexOps.size() == 4 && "Expecting 4 indexes to map loop");
+
   if (auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front().front())) {
     OpBuilder builder(forOp);
     Location loc(accLoopOp.getLoc());
     if(accLoopOp.isSeq()) {
-      // Nothing done now. 
-    } else if(accLoopOp.isGangVector() || accLoopOp.getExecutionMappingAttr() ==
-        acc::OpenACCExecMapping::NONE) {
+      if(accLoopOp.isGangRedundant()) {
+        loop::IfOp wrapper = createGangRedundantWrapper(builder, loc, indexOps);
+        forOp.getOperation()->moveBefore(wrapper.thenRegion().back().getTerminator());
+      }
+    } else if(accLoopOp.isGangVector()) {
 
       // lb = blockIdx.x * blockDim.x + threadIdx.x          
-      Value tmp = builder.create<MulIOp>(loc, indexOps[BLOCK_ID_X],
-                                         indexOps[BLOCK_DIM_X]);
+      Value tmp = builder.create<MulIOp>(loc, 
+          indexOps[BLOCK_ID_X], indexOps[BLOCK_DIM_X]);
       Value lb = builder.create<AddIOp>(loc, tmp, indexOps[THREAD_ID_X]);
       forOp.setLowerBound(lb);
       
       // step = gridDim.x * blockDim.x
-      Value step = builder.create<MulIOp>(loc, indexOps[GRID_DIM_X],
-                                          indexOps[BLOCK_DIM_X]);
+      Value step = builder.create<MulIOp>(loc, 
+          indexOps[GRID_DIM_X], indexOps[BLOCK_DIM_X]);
       forOp.setStep(step);
     } else if (accLoopOp.isGang()) {
       forOp.setLowerBound(indexOps[BLOCK_ID_X]);
@@ -574,7 +646,9 @@ static void mapLoopToGrid(acc::LoopOp accLoopOp,
     } else if (accLoopOp.isVector() || accLoopOp.isWorker()) {
       forOp.setLowerBound(indexOps[THREAD_ID_X]);
       forOp.setStep(indexOps[BLOCK_DIM_X]);
-    } 
+    }
+    forOps.push_back(forOp);
+
   } else {
 
   }
@@ -592,25 +666,11 @@ static void transformGangRedundant(acc::GangRedundantOp accGangRedundantOp,
   OpBuilder builder(accGangRedundantOp);
   Location loc = accGangRedundantOp.getLoc();
   
+  loop::IfOp wrapper = createGangRedundantWrapper(builder, loc, indexOps);
   
-  // if threadIdx.x == 0 then
-  Value const0 = builder.create<ConstantOp>(
-    loc, builder.getIntegerAttr(builder.getIndexType(), 0));
-  Value isThread0 = builder.create<CmpIOp>(
-   loc, CmpIPredicate::eq, indexOps[THREAD_ID_X], const0);
-  
-  auto ifOp = builder.create<loop::IfOp>(loc, isThread0, false);
+  wrapper.thenRegion().takeBody(accGangRedundantOp.getBody());
 
-  // Move operation inside the newly created if-then region
-  auto &thenRegion = ifOp.thenRegion();
-  
-  // accGangRedundantOp.walk([](acc::GangRedundantEndOp op) {
-  //   op.erase();
-  // });
-
-  thenRegion.takeBody(accGangRedundantOp.getBody());
-  // Add a barrier to sync all worker after the seq loop
-  builder.setInsertionPointAfter(ifOp);
+  builder.setInsertionPointAfter(wrapper);
   accGangRedundantOp.erase();
 }
 
@@ -663,23 +723,33 @@ static void removeUslessArguments(gpu::GPUFuncOp outlinedParallelRegionKernel,
 }
 
 template <typename OpTy>
-static void createForX(OpBuilder &builder, Location loc,
-                       SmallVectorImpl<Value> &values) {
+static void createGPUIndexOperationForX(OpBuilder &builder, Location loc,
+                                        SmallVectorImpl<Value> &values) {
   Value v = builder.create<OpTy>(loc, builder.getIndexType(),
                                  builder.getStringAttr("x"));
   values.push_back(v);
 }
 
 
-static void injectGpuIndexOperations(Location loc, Region &body,
-                                     SmallVector<Value, 4> &indexOps) {
+static void injectGpuIndexOperationsForX(Location loc, Region &body,
+                                         SmallVector<Value, 4> &indexOps) {
   OpBuilder builder(loc->getContext());
   Block &firstBlock = body.front();
   builder.setInsertionPointToStart(&firstBlock);
-  createForX<gpu::BlockIdOp>(builder, loc, indexOps);
-  createForX<gpu::ThreadIdOp>(builder, loc, indexOps);
-  createForX<gpu::GridDimOp>(builder, loc, indexOps);
-  createForX<gpu::BlockDimOp>(builder, loc, indexOps);
+  createGPUIndexOperationForX<gpu::BlockIdOp>(builder, loc, indexOps);
+  createGPUIndexOperationForX<gpu::ThreadIdOp>(builder, loc, indexOps);
+  createGPUIndexOperationForX<gpu::GridDimOp>(builder, loc, indexOps);
+  createGPUIndexOperationForX<gpu::BlockDimOp>(builder, loc, indexOps);
+}
+
+/// Perform analysis on the LoopOp to determine its execution mode.
+static void analysisLoopOp(acc::LoopOp accLoopOp) {
+  if(accLoopOp.isSeq()) {
+    auto parentOp = accLoopOp.getParentOfType<acc::LoopOp>();
+    if(!parentOp)
+      accLoopOp.setAttr(acc::LoopOp::getGangRedundantAttrName(), 
+          UnitAttr::get(accLoopOp.getOperation()->getContext()));
+  }
 }
 
 void OpenACCToTargetLoweringPass::runOnModule() {
@@ -690,12 +760,13 @@ void OpenACCToTargetLoweringPass::runOnModule() {
 
   // target.addLegalOp<acc::ParallelOp>();
   // target.addLegalOp<acc::ParallelEndOp>();
-  target.addLegalOp<acc::LoopOp>();
+  // target.addLegalOp<acc::LoopOp>();
   target.addLegalOp<acc::LoopEndOp>();
   target.addLegalOp<acc::GangRedundantEndOp>();
 
   // If operation is considered legal the rewrite pattern in not called.
   OwningRewritePatternList patterns;
+  // patterns.insert<SequentialLoopOpNesting>(&getContext());
   // patterns.insert<ParallelOpOutling>(&getContext());
   // patterns.insert<TerminatorOpLowering<acc::ParallelEndOp>>(&getContext());
   // patterns.insert<TerminatorOpLowering<acc::LoopEndOp>>(&getContext());
@@ -706,6 +777,12 @@ void OpenACCToTargetLoweringPass::runOnModule() {
 
   for (auto func : getModule().getOps<FuncOp>()) {
     Block::iterator insertPt(func.getOperation()->getNextNode());
+
+
+    // 
+    m.walk([&](acc::LoopOp accLoopOp) {
+      analysisLoopOp(accLoopOp);
+    });
 
     // Walk over ParallelOp operation to outline the parallel region
     m.walk([&](acc::ParallelOp parallelOp) {
@@ -718,15 +795,27 @@ void OpenACCToTargetLoweringPass::runOnModule() {
           convertOutlinedParallelRegionToKernel(outlinedParallelRegion);
 
       SmallVector<Value, 4> indexOps;
-      injectGpuIndexOperations(parallelOp.getLoc(),
+      injectGpuIndexOperationsForX(parallelOp.getLoc(),
           outlinedParallelRegionKernel.getBody(), indexOps);
 
       outlinedParallelRegionKernel.walk([&](acc::GangRedundantOp accGangRedundantOp) {
         transformGangRedundant(accGangRedundantOp, indexOps);
       });   
 
+      // Collapse acc.loop if necessary
       outlinedParallelRegionKernel.walk([&](acc::LoopOp accLoopOp) {
-        mapLoopToGrid(accLoopOp, indexOps);
+         applyCollapseClause(accLoopOp);
+        if(parallelOp.hasNumGangs()) {
+          hoistOpBeforeOperation(accLoopOp, accLoopOp);
+        } else {
+          hoistOpBeforeOperation(parallelOp, accLoopOp);
+        }
+      });
+
+
+      SmallVector<loop::ForOp, 4> forOps;
+      outlinedParallelRegionKernel.walk([&](acc::LoopOp accLoopOp) {
+        mapLoopToGrid(accLoopOp, indexOps, forOps);
       });
 
       // parallel private
@@ -734,15 +823,26 @@ void OpenACCToTargetLoweringPass::runOnModule() {
           gangPrivates);
       //removeUslessArguments(outlinedParallelRegionKernel, operands);
 
+
+
+      
+      
+
+
+
+
+
+
       auto kernelModule =
           createKernelModule(outlinedParallelRegionKernel, symbolTable);
       symbolTable.insert(kernelModule, insertPt);
 
-      // for(Value p : gangPrivates) {
-      //   operands.insert(p); 
-      // }
+
       auto callOutlinedParallelRegion = createLaunchParallelRegion(
           parallelOp, outlinedParallelRegionKernel, operands.getArrayRef());
+
+      
+
 
       modified = true;
 

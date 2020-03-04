@@ -18,8 +18,8 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-template <typename T>
-class OpPassBase;
+
+template <typename T> class OpPassBase;
 /// Collect a set of patterns to lower from OpenACC structure
 /// operations (acc.loop, acc.parallel etc.) to other
 /// operations
