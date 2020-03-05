@@ -1,4 +1,4 @@
-//===- OpenACCToTargetPass.cpp - Convert OpenACC to Target runtime calls --===//
+//===- ConvertOpenACCToGPU.cpp - Convert OpenACC to GPU dialect -----------===//
 //
 // Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPU.h"
-#include "mlir/Conversion/OpenACCToGPU/ConvertOpenACCToTarget.h"
+#include "mlir/Conversion/OpenACCToGPU/ConvertOpenACCToGPU.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
@@ -28,8 +28,8 @@
 
 using namespace mlir;
 
-struct OpenACCToTargetLoweringPass
-    : public ModulePass<OpenACCToTargetLoweringPass> {
+struct OpenACCToGPULoweringPass
+    : public ModulePass<OpenACCToGPULoweringPass> {
   void runOnModule() override;
 
 private:
@@ -51,8 +51,6 @@ struct SequentialLoopOpNesting final : public OpRewritePattern<acc::LoopOp> {
   PatternMatchResult matchAndRewrite(acc::LoopOp accLoopOp,
                                      PatternRewriter &rewriter) const override;
 };
-
-
 
 template <typename TerminatorOp>
 struct TerminatorOpLowering final : public OpRewritePattern<TerminatorOp> {
@@ -183,235 +181,13 @@ static void extractRegionBeforeItself(OpTy baseOp) {
   }
 }
 
-// template <typename StructureOp, typename OpTy>
-// static void extractOperationsOutsideOfRegion(StructureOp baseOp,
-//                                              OpTy insPosition) {
-//   SmallVector<Operation *, 8> toHoist;
-//   for (Operation &op : baseOp.getOperation()
-//                            ->getRegion(0)
-//                            .getBlocks()
-//                            .front()
-//                            .getOperations()) {
-//     if (&op == baseOp.getOperation()) {
-//       continue;
-//     } else {
-//       toHoist.push_back(&op);
-//     }
-//   }
-
-//   for (auto *op : toHoist) {
-//     op->moveBefore(insPosition);
-//   }
-// }
-
-// // Collapse `n` perfectly nested loops starting at `rootForOp`
-// // New opeartion may be placed between in the accLoopOp region before
-// // the forOp.
-// static LogicalResult collapseNestedLoops(loop::ForOp rootForOp,
-//                                          acc::LoopOp accLoopOp) {
-//   unsigned n = accLoopOp.getCollapse();
-//   // Looks for perfectly nested loops
-//   SmallVector<loop::ForOp, 4> loops;
-//   getPerfectlyNestedLoops(loops, rootForOp);
-//   if (loops.size() < n) {
-//     rootForOp.emitError("Not enough nested loops to collapse");
-//     return failure();
-//   }
-
-//   // Collapse the n first loops of the nest
-//   auto nest = llvm::makeMutableArrayRef(loops.data(), n);
-//   coalesceLoops(nest);
-//   return success();
-// }
-
-// static LogicalResult applyCollapseClause(acc::LoopOp accLoopOp) {
-//   if (!accLoopOp.hasCollapseAttr())
-//     return success();
-//   if (auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front())) {
-//     if(failed(collapseNestedLoops(forOp, accLoopOp)))
-//       return failure();
-//     accLoopOp.removeAttr(acc::LoopOp::getCollapseAttrName());
-//   }
-//   return success();
-// }
-
-// static LogicalResult mapParallerLoopToGangWorker(acc::LoopOp accLoopOp,
-//                                                  gpu::LaunchOp launchOp) {
-//   if (auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front())) {
-//     OpBuilder builder(forOp);
-//     Location loc(forOp.getLoc());
-
-//     if (accLoopOp.hasSeqAttr()) { // Loop has to be exectued sequentially
-//       // Create if (blockId.x == 0 && threadId.x == 0) then { do work }
-//       Value const0 = builder.create<ConstantOp>(
-//           loc, builder.getIntegerAttr(builder.getIndexType(), 0));
-//       Value isBlock0 = builder.create<CmpIOp>(
-//           loc, CmpIPredicate::eq, launchOp.getBlockIds().x, const0);
-//       Value isThread0 = builder.create<CmpIOp>(
-//           loc, CmpIPredicate::eq, launchOp.getThreadIds().x, const0);
-//       Value isSeqId = builder.create<AndOp>(loc, isBlock0, isThread0);
-//       auto ifOp = builder.create<loop::IfOp>(loc, isSeqId, false);
-
-//       // Add a barrier to sync all worker after the seq loop
-//       builder.create<gpu::BarrierOp>(loc);
-
-//       // Move the seq loop in the if-then region
-//       auto &thenRegion = ifOp.thenRegion();
-//       forOp.getOperation()->moveBefore(thenRegion.back().getTerminator());
-//     } else {
-//       if (accLoopOp.isGangVector() ||
-//           accLoopOp.getExecutionMappingAttr() ==
-//               acc::OpenACCExecMapping::NONE) { // Map to gang vector
-//         // lb = blockIdx.x * blockDim.x + threadIdx.x
-//         Value tmp = builder.create<MulIOp>(loc, launchOp.getBlockIds().x,
-//                                            launchOp.getBlockSize().x);
-//         Value lb =
-//             builder.create<AddIOp>(loc, tmp, launchOp.getThreadIds().x);
-//         forOp.setLowerBound(lb);
-
-//         // step = gridDim.x * blockDim.x
-//         Value step = builder.create<MulIOp>(loc, launchOp.getGridSize().x,
-//                                             launchOp.getBlockSize().x);
-//         forOp.setStep(step);
-//       } else if (accLoopOp.isGang()) { // Map to gang only
-//         forOp.setLowerBound(launchOp.getBlockIds().x);
-//         forOp.setStep(launchOp.getGridSize().x);
-//       } else if (accLoopOp.isVector()) { // Map to vector only
-//         forOp.setLowerBound(launchOp.getThreadIds().x);
-//         forOp.setStep(launchOp.getBlockSize().x);
-//       }
-//     }
-
-//     extractRegionBeforeItself(accLoopOp);
-//     accLoopOp.erase();
-//   } else if (dyn_cast<AffineForOp>(accLoopOp.getBody().front())) {
-//     accLoopOp.emitError(
-//         "affine.for operation in acc.loop not supported yet.");
-//     return failure();
-//   } else {
-//     accLoopOp.emitError("First operation in acc.loop region must be a
-//     loop."); return failure();
-//   }
-//   return success();
-// }
-
-// static void gatherForOp(acc::LoopOp accLoopOp, SmallVector<loop::ForOp, 2>
-// &forOps) {
-//   if(auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front())) {
-//     forOps.push_back(forOp);
-//   }
-// }
-
-// static Value ceilDivPositive(OpBuilder &builder, Location loc, Value
-// dividend,
-//                              int64_t divisor) {
-//   assert(divisor > 0 && "expected positive divisor");
-//   assert(dividend.getType().isIndex() && "expected index-typed value");
-//   Value divisorMinusOneCst = builder.create<ConstantIndexOp>(loc, divisor -
-//   1); Value divisorCst = builder.create<ConstantIndexOp>(loc, divisor); Value
-//   sum = builder.create<AddIOp>(loc, dividend, divisorMinusOneCst); return
-//   builder.create<SignedDivIOp>(loc, sum, divisorCst);
-// }
-
-// static Value generateGangValue(OpBuilder &builder, Location loc,
-//                                loop::ForOp forOp) {
-//   Value diffUpLb = builder.create<SubIOp>(loc, forOp.upperBound(),
-//       forOp.lowerBound());
-//   Value numberOfIterations = ceilDivPositive(builder, loc, diffUpLb,
-//       forOp.step());
-//   Value nbOfGangs = ceilDivPositive(builder, loc, forOp.upperBound(), 128);
-//   return nbOfGangs;
-// }
-
-// template <typename StructureOp>
-// static void hoistOpBeforeOperation(StructureOp &parentOp,
-//                                    acc::LoopOp &accLoopOp) {
-//   // Hoist operation created by coalesceLoops out of acc.loop
-//   SmallVector<Operation *, 5> toHoist;
-//   for (auto &op : accLoopOp.getBody().getOperations()) {
-//     if (dyn_cast<loop::ForOp>(&op))
-//       break;
-//     toHoist.push_back(&op);
-//   }
-
-//   for (auto *op : toHoist) {
-//     op->moveBefore(parentOp);
-//   }
-// }
-
-// static LogicalResult
-// createGPULaunchForParallelRegion(acc::ParallelOp parallelOp) {
-//   OpBuilder builder(parallelOp.getOperation());
-//   auto loc = parallelOp.getLoc();
-
-//   bool dynamicNumGangs = parallelOp.getNumGangs() == 1;
-
-//   Value one = builder.create<ConstantOp>(
-//       loc, builder.getIntegerAttr(builder.getIndexType(), 1));
-//   Value numGangs = one;
-//   Value numWorkers = one;
-
-//   // Count number of parallel loops to deduce gang/worker count
-//   SmallVector<loop::ForOp, 2> forOps;
-//   parallelOp.walk([&](acc::LoopOp accLoopOp) {
-//     applyCollapseClause(accLoopOp);
-//     if(dynamicNumGangs)
-//       hoistOpBeforeOperation(parallelOp, accLoopOp);
-//     else
-//       hoistOpBeforeOperation(accLoopOp, accLoopOp);
-//     if(!accLoopOp.hasSeqAttr()) {
-//       gatherForOp(accLoopOp, forOps);
-//     }
-//   });
-
-//   if(dynamicNumGangs && forOps.size() != 0) {
-//     assert(forOps.size() > 0 && "At least one forOp needed to compute the
-//     gang size"); numGangs = generateGangValue(builder, loc, forOps.front());
-//     // TODO: when there is more than one loop in the parallel region
-//   } else if(!dynamicNumGangs) {
-//     numGangs = builder.create<ConstantOp>(loc,
-//         builder.getIntegerAttr(builder.getIndexType(),
-//         parallelOp.getNumGangs()));
-//   }
-
-//   // Create workers constant if different than 1
-//   if(dynamicNumGangs && forOps.size() != 0) {
-//     numWorkers = builder.create<ConstantOp>(loc,
-//         builder.getIntegerAttr(builder.getIndexType(), 128));
-//   } else if(parallelOp.getNumWorkers() != 1) {
-//     numWorkers = builder.create<ConstantOp>(loc,
-//         builder.getIntegerAttr(builder.getIndexType(),
-//         parallelOp.getNumWorkers()));
-//   }
-
-//   auto launchOp = builder.create<gpu::LaunchOp>(loc, numGangs, one, one,
-//                                                 numWorkers, one, one);
-
-//   builder.setInsertionPointToEnd(&launchOp.body().front());
-//   auto gpuTerminatorOp =
-//   builder.create<gpu::TerminatorOp>(launchOp.getLoc());
-
-//   // Move parallel operation into launchOp body
-//   parallelOp.getOperation()->moveBefore(gpuTerminatorOp);
-
-//   // Adapt acc loop in the parallel region
-//   parallelOp.walk([&](acc::LoopOp accLoopOp) {
-//     mapParallerLoopToGangWorker(accLoopOp, launchOp);
-//   });
-
-//   extractRegionBeforeItself(parallelOp);
-//   parallelOp.erase();
-
-//   return success();
-// }
-
 // Collapse `n` perfectly nested loops starting at `rootForOp`
 // New opeartion may be placed between in the accLoopOp region before
 // the forOp.
 static LogicalResult collapseNestedLoops(loop::ForOp rootForOp, 
                                          acc::LoopOp accLoopOp) {
   unsigned n = accLoopOp.getCollapse();
-  llvm::errs() << n << "\n";
+
   // Looks for perfectly nested loops
   SmallVector<loop::ForOp, 4> loops;
   getPerfectlyNestedLoops(loops, rootForOp);
@@ -531,20 +307,15 @@ convertOutlinedParallelRegionToKernel(FuncOp outlinedParallelRegion) {
 static gpu::LaunchFuncOp
 createLaunchParallelRegion(acc::ParallelOp parallelOp,
                            gpu::GPUFuncOp outlinedParallelRegionKernel,
+                           Value numGangs, Value numWorkers,
                            ValueRange operands) {
   OpBuilder builder(parallelOp);
   Value constOne = builder.create<ConstantOp>(parallelOp.getLoc(), 
       builder.getIntegerAttr(builder.getIndexType(), 1));
 
-  Value numGangs = constOne;
-  if (parallelOp.hasNumGangs())
-    numGangs = builder.create<ConstantOp>(parallelOp.getLoc(), 
-        builder.getIntegerAttr(builder.getIndexType(),
-        parallelOp.getNumGangs()));
-
   auto callOutlinedParallelRegionKernel = builder.create<gpu::LaunchFuncOp>(
       parallelOp.getLoc(), outlinedParallelRegionKernel, numGangs, constOne,
-      constOne, constOne, constOne, constOne, operands);
+      constOne, numWorkers, constOne, constOne, operands);
   // TODO this seems to be broken
   // inlineBeneficiaryOps(outlinedParallelRegionKernel,
   //                      callOutlinedParallelRegionKernel);
@@ -552,7 +323,7 @@ createLaunchParallelRegion(acc::ParallelOp parallelOp,
 }
 
 // TODO grab the one from KernelOutining if possible
-gpu::GPUModuleOp OpenACCToTargetLoweringPass::createKernelModule(
+gpu::GPUModuleOp OpenACCToGPULoweringPass::createKernelModule(
     gpu::GPUFuncOp kernelFunc, const SymbolTable &parentSymbolTable) {
   // TODO: This code cannot use an OpBuilder because it must be inserted into
   // a SymbolTable by the caller. SymbolTable needs to be refactored to
@@ -592,8 +363,8 @@ static constexpr unsigned BLOCK_ID_X = 0;
 static constexpr unsigned THREAD_ID_X = 1;
 static constexpr unsigned GRID_DIM_X = 2;
 static constexpr unsigned BLOCK_DIM_X = 3;
-static constexpr unsigned THREAD_ID_Y = 4;
-static constexpr unsigned BLOCK_DIM_Y = 5;
+// static constexpr unsigned THREAD_ID_Y = 4;
+// static constexpr unsigned BLOCK_DIM_Y = 5;
 
 
 
@@ -640,15 +411,16 @@ static void mapLoopToGrid(acc::LoopOp accLoopOp,
       Value step = builder.create<MulIOp>(loc, 
           indexOps[GRID_DIM_X], indexOps[BLOCK_DIM_X]);
       forOp.setStep(step);
+      forOps.push_back(forOp);
     } else if (accLoopOp.isGang()) {
       forOp.setLowerBound(indexOps[BLOCK_ID_X]);
       forOp.setStep(indexOps[GRID_DIM_X]);
+      forOps.push_back(forOp);
     } else if (accLoopOp.isVector() || accLoopOp.isWorker()) {
       forOp.setLowerBound(indexOps[THREAD_ID_X]);
       forOp.setStep(indexOps[BLOCK_DIM_X]);
+      forOps.push_back(forOp);
     }
-    forOps.push_back(forOp);
-
   } else {
 
   }
@@ -743,16 +515,97 @@ static void injectGpuIndexOperationsForX(Location loc, Region &body,
 }
 
 /// Perform analysis on the LoopOp to determine its execution mode.
-static void analysisLoopOp(acc::LoopOp accLoopOp) {
+static void analysisLoopOp(acc::LoopOp accLoopOp, 
+                           SmallVector<Value, 4> &lowerBounds,
+                           SmallVector<Value, 4> &upperBounds,
+                           SmallVector<Value, 4> &steps) {
   if(accLoopOp.isSeq()) {
     auto parentOp = accLoopOp.getParentOfType<acc::LoopOp>();
     if(!parentOp)
       accLoopOp.setAttr(acc::LoopOp::getGangRedundantAttrName(), 
           UnitAttr::get(accLoopOp.getOperation()->getContext()));
+  } else {
+    if (auto forOp = dyn_cast<loop::ForOp>(accLoopOp.getBody().front().front())) {
+      lowerBounds.push_back(forOp.lowerBound());
+      upperBounds.push_back(forOp.upperBound());
+      steps.push_back(forOp.step());
+    }
+    // TODO handle more cases
   }
 }
 
-void OpenACCToTargetLoweringPass::runOnModule() {
+///
+static Value ceilDivPositive(OpBuilder &builder, Location loc, Value dividend,
+                             int64_t divisor) {
+  assert(divisor > 0 && "expected positive divisor");
+  assert(dividend.getType().isIndex() && "expected index-typed value");
+  Value divisorMinusOneCst = builder.create<ConstantIndexOp>(loc, divisor - 1);
+  Value divisorCst = builder.create<ConstantIndexOp>(loc, divisor);
+  Value sum = builder.create<AddIOp>(loc, dividend, divisorMinusOneCst);
+  return builder.create<SignedDivIOp>(loc, sum, divisorCst);
+}
+
+///
+///
+static Value generateGangValue(OpBuilder &builder, Location loc, 
+                               Value lowerBound, Value upperBound, Value step,
+                               int64_t vectorLength) {
+  // upper bound - lower bound
+  Value diffUpLb = builder.create<SubIOp>(loc, upperBound, lowerBound);
+  // ceildiv(diffUpLb, step)
+  Value numberOfIterations = ceilDivPositive(builder, loc, diffUpLb, step);
+  // ceildiv(numberOfIterations, vectorLength)
+  Value nbOfGangs = ceilDivPositive(builder, loc, numberOfIterations,
+      vectorLength);
+  return nbOfGangs;
+}
+
+
+/// Generate the number of gang value used to launch kernel
+/// Take value defined as attribute or dereived avlue from loops inside the 
+/// parallel region.
+static Value generateNumGangs(acc::ParallelOp parallelOp, 
+                              SmallVector<Value, 4> lowerBounds, 
+                              SmallVector<Value, 4> upperBounds,
+                              SmallVector<Value, 4> steps, 
+                              int64_t vectorLength) {
+  OpBuilder builder(parallelOp);
+  Location loc = parallelOp.getLoc();
+  if(parallelOp.hasNumGangs())
+    return builder.create<ConstantOp>(parallelOp.getLoc(), 
+        builder.getIntegerAttr(builder.getIndexType(),
+        parallelOp.getNumGangs()));
+
+  if(upperBounds.size() == 0)
+    return builder.create<ConstantOp>(parallelOp.getLoc(), 
+        builder.getIntegerAttr(builder.getIndexType(), 1));
+
+  // TODO handle more than one loop
+  return generateGangValue(builder, loc, lowerBounds.front(), 
+      upperBounds.front(), steps.front(), vectorLength);
+}
+
+static Value generateNumWorkers(acc::ParallelOp parallelOp,
+                                SmallVector<Value, 4> lowerBounds, 
+                                SmallVector<Value, 4> upperBounds,
+                                SmallVector<Value, 4> steps, 
+                                int64_t vectorLength) {
+  OpBuilder builder(parallelOp);
+  Location loc = parallelOp.getLoc();                                  
+  if(parallelOp.hasNumWorkers()) 
+    return builder.create<ConstantOp>(loc,
+        builder.getIntegerAttr(builder.getIndexType(),
+        parallelOp.getNumWorkers()));
+
+  if(lowerBounds.size() == 0)
+    return builder.create<ConstantOp>(loc, 
+        builder.getIntegerAttr(builder.getIndexType(), 1));
+  
+  return builder.create<ConstantOp>(loc, 
+      builder.getIntegerAttr(builder.getIndexType(), vectorLength));
+}
+
+void OpenACCToGPULoweringPass::runOnModule() {
 
   ConversionTarget target(getContext());
   target.addIllegalDialect<acc::OpenACCDialect>();
@@ -778,15 +631,18 @@ void OpenACCToTargetLoweringPass::runOnModule() {
   for (auto func : getModule().getOps<FuncOp>()) {
     Block::iterator insertPt(func.getOperation()->getNextNode());
 
-
-    // 
-    m.walk([&](acc::LoopOp accLoopOp) {
-      analysisLoopOp(accLoopOp);
-    });
-
     // Walk over ParallelOp operation to outline the parallel region
     m.walk([&](acc::ParallelOp parallelOp) {
       OpBuilder builder(parallelOp);
+
+      // Perform some analysis on loops before applying transformation
+      SmallVector<Value, 4> lowerBounds;
+      SmallVector<Value, 4> upperBounds;
+      SmallVector<Value, 4> steps;
+      parallelOp.walk([&](acc::LoopOp accLoopOp) {
+        analysisLoopOp(accLoopOp, lowerBounds, upperBounds, steps);
+      });
+      
       llvm::SetVector<Value> operands;
       llvm::SetVector<Value> gangPrivates;
       auto outlinedParallelRegion = outlineParallelRegion(parallelOp, operands, 
@@ -805,13 +661,8 @@ void OpenACCToTargetLoweringPass::runOnModule() {
       // Collapse acc.loop if necessary
       outlinedParallelRegionKernel.walk([&](acc::LoopOp accLoopOp) {
          applyCollapseClause(accLoopOp);
-        if(parallelOp.hasNumGangs()) {
-          hoistOpBeforeOperation(accLoopOp, accLoopOp);
-        } else {
-          hoistOpBeforeOperation(parallelOp, accLoopOp);
-        }
+         hoistOpBeforeOperation(accLoopOp, accLoopOp);
       });
-
 
       SmallVector<loop::ForOp, 4> forOps;
       outlinedParallelRegionKernel.walk([&](acc::LoopOp accLoopOp) {
@@ -823,26 +674,14 @@ void OpenACCToTargetLoweringPass::runOnModule() {
           gangPrivates);
       //removeUslessArguments(outlinedParallelRegionKernel, operands);
 
-
-
-      
-      
-
-
-
-
-
-
       auto kernelModule =
           createKernelModule(outlinedParallelRegionKernel, symbolTable);
       symbolTable.insert(kernelModule, insertPt);
 
-
-      auto callOutlinedParallelRegion = createLaunchParallelRegion(
-          parallelOp, outlinedParallelRegionKernel, operands.getArrayRef());
-
-      
-
+      Value numGangs = generateNumGangs(parallelOp, lowerBounds, upperBounds, steps, 128);
+      Value numWorkers = generateNumWorkers(parallelOp, lowerBounds, upperBounds, steps, 128);
+      createLaunchParallelRegion(parallelOp, outlinedParallelRegionKernel, 
+          numGangs, numWorkers, operands.getArrayRef());
 
       modified = true;
 
@@ -858,9 +697,9 @@ void OpenACCToTargetLoweringPass::runOnModule() {
     signalPassFailure();
 }
 
-std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertOpenACCToTargetPass() {
-  return std::make_unique<OpenACCToTargetLoweringPass>();
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertOpenACCToGPUPass() {
+  return std::make_unique<OpenACCToGPULoweringPass>();
 }
 
-static PassRegistration<OpenACCToTargetLoweringPass>
-    pass("convert-openacc-to-target", "Convert OpenACC to target runtime");
+static PassRegistration<OpenACCToGPULoweringPass>
+    pass("convert-openacc-to-gpu", "Convert OpenACC to GPU dialect");

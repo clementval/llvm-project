@@ -1,4 +1,4 @@
-//===- ConvertOpenACCToTarget.h ----------------------------------- C++ -*-===//
+//===- ConvertOpenACCToGPU.h -------------------------------------- C++ -*-===//
 //
 // Part of the MLIR Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,12 +6,12 @@
 //
 // =============================================================================
 //
-// Provides patterns to convert from OpenACC ops to target runtime.
+// Provides patterns to convert from OpenACC ops to GPU Dialect.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_CONVERSION_OPENACC_CONVERTOPENACCTOTARGET_H
-#define MLIR_CONVERSION_OPENACC_CONVERTOPENACCTOTARGET_H
+#ifndef MLIR_CONVERSION_OPENACC_CONVERTOPENACCTOGPU_H
+#define MLIR_CONVERSION_OPENACC_CONVERTOPENACCTOGPU_H
 
 #include "mlir/Dialect/OpenACC/OpenACC.h"
 #include "mlir/Support/StringExtras.h"
@@ -23,11 +23,11 @@ class OpPassBase;
 /// Collect a set of patterns to lower from OpenACC structure
 /// operations (acc.loop, acc.parallel etc.) to other
 /// operations
-void populateOpenACCToTargetConversionPatterns(OwningRewritePatternList &patterns,
+void populateOpenACCToGPUConversionPatterns(OwningRewritePatternList &patterns,
                                                MLIRContext *ctx);
 
-std::unique_ptr<OpPassBase<ModuleOp>> createConvertOpenACCToTargetPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createConvertOpenACCToGPUPass();
 
 } // namespace mlir
 
-#endif // MLIR_CONVERSION_OPENACC_CONVERTOPENACCTOTARGET_H
+#endif // MLIR_CONVERSION_OPENACC_CONVERTOPENACCTOGPU_H
