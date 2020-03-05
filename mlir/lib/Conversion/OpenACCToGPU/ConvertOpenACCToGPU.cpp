@@ -197,6 +197,7 @@ static LogicalResult collapseNestedLoops(loop::ForOp rootForOp,
   return success();
 }
 
+/// Collapse the loop nest nested in the acc.loop op region.
 static LogicalResult applyCollapseClause(acc::LoopOp accLoopOp) {
   if (!accLoopOp.hasCollapseAttr())
     return success();
@@ -205,6 +206,7 @@ static LogicalResult applyCollapseClause(acc::LoopOp accLoopOp) {
       return failure();
     accLoopOp.removeAttr(acc::LoopOp::getCollapseAttrName());
   }
+  // TODO support affine.for loop.parallel, fir.do
   return success();
 }
 
@@ -577,6 +579,16 @@ static Value generateNumWorkers(acc::ParallelOp parallelOp,
       loc, builder.getIntegerAttr(builder.getIndexType(), vectorLength));
 }
 
+/// Remove GPU index operation if there is no use of their value
+static void cleanUpUnsuedIndexOps(gpu::GPUFuncOp outlinedParallelRegion, 
+    SmallVector<Value, 4> &indexOps) {
+  for(Value op : indexOps) {
+    if(op.use_empty()) {
+      op.getDefiningOp()->erase();
+    }
+  }
+}
+
 void OpenACCToGPULoweringPass::runOnModule() {
 
   ConversionTarget target(getContext());
@@ -658,6 +670,9 @@ void OpenACCToGPULoweringPass::runOnModule() {
           generateNumWorkers(parallelOp, lowerBounds, upperBounds, steps, 128);
       createLaunchParallelRegion(parallelOp, outlinedParallelRegionKernel,
                                  numGangs, numWorkers, operands.getArrayRef());
+
+
+      cleanUpUnsuedIndexOps(outlinedParallelRegionKernel, indexOps);                                 
 
       modified = true;
 
