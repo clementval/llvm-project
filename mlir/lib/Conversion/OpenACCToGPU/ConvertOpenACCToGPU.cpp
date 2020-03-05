@@ -143,11 +143,9 @@ ParallelOpOutling::matchAndRewrite(acc::ParallelOp parallelOp,
 //     auto parentOp = accLoopOp.getParentOfType<acc::LoopOp>();
 //     if(!parentOp)
 //       return matchFailure();
-
 //     auto gangRedundantOp = accLoopOp.getParentOfType<acc::GangRedundantOp>();
 //     if(gangRedundantOp)
 //       return matchFailure();
-
 //     Location loc = accLoopOp.getLoc();
 //     auto gangRedOp = rewriter.create<acc::GangRedundantOp>(loc);
 //     rewriter.setInsertionPointToStart(&gangRedOp.getBody().front());
@@ -156,7 +154,6 @@ ParallelOpOutling::matchAndRewrite(acc::ParallelOp parallelOp,
 //     accLoopOp.getOperation()->moveBefore(gangRedundantTerminator);
 //     return matchSuccess();
 //   }
-
 //   return matchFailure();
 // }
 
@@ -441,19 +438,6 @@ static void applyGangPrivateList(gpu::GPUFuncOp outlinedParallelRegion,
                                  llvm::SetVector<Value> &privates) {
   if (accParallelOp.getNumGangPrivates() == 0)
     return;
-
-  // assert(accParallelOp.getNumGangPrivates() == privates.size()
-  //     && "Number of private variable doesn't match");
-  // OpBuilder builder(outlinedParallelRegion.getBody());
-  // for(auto p : accParallelOp.getGangPrivates()) {
-  //   auto type = p.getType().dyn_cast<MemRefType>();
-  //   assert(type && type.hasStaticShape() && "can only privatize memrefs");
-  //   auto newPrivate = builder.create<AllocOp>(accParallelOp.getLoc(),
-  //       MemRefType::Builder(type).setMemorySpace(
-  //         gpu::GPUDialect::getWorkgroupAddressSpace()));
-  //   replaceAllUsesInRegionWith(p, newPrivate,
-  //       outlinedParallelRegion.getBody());
-  // }
 
   assert(accParallelOp.getNumGangPrivates() == privates.size() &&
          "Number of private variable doesn't match");
