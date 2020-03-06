@@ -126,7 +126,6 @@ ParallelOpOutling::matchAndRewrite(acc::ParallelOp parallelOp,
   symbolTable.insert(outlinedParallelRegion);
 
   // replace region with newly outlined function call
-  // rewriter.setInsertionPoint(parallelOp);
   OpBuilder builder(parallelOp.getContext());
   builder.create<CallOp>(parallelOp.getLoc(), outlinedParallelRegion,
                          operands.getArrayRef());
