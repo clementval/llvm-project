@@ -484,13 +484,23 @@ def GPU_YieldOp : GPU_Op<"yield", [Terminator]>,
 
 // These mirror the XLA ComparisonDirection enum.
 def GPU_AllReduceOpAdd : StrEnumAttrCase<"add">;
+def GPU_AllReduceOpAnd : StrEnumAttrCase<"and">;
+def GPU_AllReduceOpMax : StrEnumAttrCase<"max">;
+def GPU_AllReduceOpMin : StrEnumAttrCase<"min">;
 def GPU_AllReduceOpMul : StrEnumAttrCase<"mul">;
+def GPU_AllReduceOpOr : StrEnumAttrCase<"or">;
+def GPU_AllReduceOpXor : StrEnumAttrCase<"xor">;
 
 def GPU_AllReduceOperationAttr : StrEnumAttr<"AllReduceOperationAttr",
     "built-in reduction operations supported by gpu.allreduce.",
     [
       GPU_AllReduceOpAdd,
+      GPU_AllReduceOpAnd,
+      GPU_AllReduceOpMax,
+      GPU_AllReduceOpMin,
       GPU_AllReduceOpMul,
+      GPU_AllReduceOpOr,
+      GPU_AllReduceOpXor
     ]>;
 
 def GPU_AllReduceOp : GPU_Op<"all_reduce",

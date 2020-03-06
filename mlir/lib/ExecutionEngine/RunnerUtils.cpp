@@ -42,6 +42,22 @@ extern "C" void _mlir_ciface_print_memref_i64(UnrankedMemRefType<int64_t> *M) {
   }
 }
 
+extern "C" void _mlir_ciface_print_memref_i32(UnrankedMemRefType<int32_t> *M) {
+  printUnrankedMemRefMetaData(std::cout, *M);
+  int rank = M->rank;
+  void *ptr = M->descriptor;
+
+  switch (rank) {
+    MEMREF_CASE(int32_t, 0);
+    MEMREF_CASE(int32_t, 1);
+    MEMREF_CASE(int32_t, 2);
+    MEMREF_CASE(int32_t, 3);
+    MEMREF_CASE(int32_t, 4);
+  default:
+    assert(0 && "Unsupported rank to print");
+  }
+}
+
 extern "C" void _mlir_ciface_print_memref_i8(UnrankedMemRefType<int8_t> *M) {
   printUnrankedMemRefMetaData(std::cout, *M);
   int rank = M->rank;
@@ -79,6 +95,13 @@ extern "C" void print_memref_i64(int64_t rank, void *ptr) {
   descriptor.rank = rank;
   descriptor.descriptor = ptr;
   _mlir_ciface_print_memref_i64(&descriptor);
+}
+
+extern "C" void print_memref_i32(int32_t rank, void *ptr) {
+  UnrankedMemRefType<int32_t> descriptor;
+  descriptor.rank = rank;
+  descriptor.descriptor = ptr;
+  _mlir_ciface_print_memref_i32(&descriptor);
 }
 
 extern "C" void print_memref_f32(int64_t rank, void *ptr) {

@@ -125,6 +125,33 @@ private:
       return isFloatingPoint ? getFactory<LLVM::FMulOp>()
                              : getFactory<LLVM::MulOp>();
     }
+    if (opName == "and") {
+      assert(!isFloatingPoint &&
+             "<and> accumulator is not compatible with Floating Point type");
+      return getFactory<LLVM::AndOp>();
+    }
+    if (opName == "or") {
+      assert(!isFloatingPoint &&
+             "<or> accumulator is not compatible with Floating Point type");
+      return getFactory<LLVM::OrOp>();
+    }
+    if (opName == "xor") {
+      assert(!isFloatingPoint &&
+             "<xor> accumulator is not compatible with Floating Point type");
+      return getFactory<LLVM::XOrOp>();
+    }
+    if (opName == "max") {
+      return isFloatingPoint ? getCmpFactory<LLVM::FCmpOp, LLVM::FCmpPredicate>(
+                                   LLVM::FCmpPredicate::ugt)
+                             : getCmpFactory<LLVM::ICmpOp, LLVM::ICmpPredicate>(
+                                   LLVM::ICmpPredicate::ugt);
+    }
+    if (opName == "min") {
+      return isFloatingPoint ? getCmpFactory<LLVM::FCmpOp, LLVM::FCmpPredicate>(
+                                   LLVM::FCmpPredicate::ult)
+                             : getCmpFactory<LLVM::ICmpOp, LLVM::ICmpPredicate>(
+                                   LLVM::ICmpPredicate::ult);
+    }
 
     return AccumulatorFactory();
   }
@@ -134,6 +161,17 @@ private:
     return [](Location loc, Value lhs, Value rhs,
               ConversionPatternRewriter &rewriter) {
       return rewriter.create<T>(loc, lhs.getType(), lhs, rhs);
+    };
+  }
+
+  /// Returns an accumulator for comparaison such as min, max. T is the type
+  /// of the compare op and P is the type of the predicate.
+  template <typename T, typename P>
+  AccumulatorFactory getCmpFactory(P predicate) const {
+    return [predicate](Location loc, Value lhs, Value rhs,
+                       ConversionPatternRewriter &rewriter) {
+      Value cmp = rewriter.create<T>(loc, predicate, lhs, rhs);
+      return rewriter.create<LLVM::SelectOp>(loc, cmp, lhs, rhs);
     };
   }
 
@@ -711,9 +749,9 @@ void mlir::populateGpuToNVVMConversionPatterns(
               GPUAllReduceOpLowering, GPUShuffleOpLowering, GPUFuncOpLowering,
               GPUReturnOpLowering>(converter);
   patterns.insert<OpToFuncCallLowering<AbsFOp>>(converter, "__nv_fabsf",
-                                               "__nv_fabs");
+                                                "__nv_fabs");
   patterns.insert<OpToFuncCallLowering<CeilFOp>>(converter, "__nv_ceilf",
-                                               "__nv_ceil");
+                                                 "__nv_ceil");
   patterns.insert<OpToFuncCallLowering<CosOp>>(converter, "__nv_cosf",
                                                "__nv_cos");
   patterns.insert<OpToFuncCallLowering<ExpOp>>(converter, "__nv_expf",
