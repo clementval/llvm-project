@@ -563,6 +563,9 @@ template <> struct TypeMap<MachineBasicBlock> {
   using LoopInfoT = MachineLoopInfo;
 };
 
+template <class BlockT, class BFIImplT>
+class BFICallbackVH;
+
 /// Get the name of a MachineBasicBlock.
 ///
 /// Get the name of a MachineBasicBlock.  It's templated so that including from
@@ -856,12 +859,12 @@ template <class BT> class BlockFrequencyInfoImpl : BlockFrequencyInfoImplBase {
   using LoopInfoT = typename bfi_detail::TypeMap<BT>::LoopInfoT;
   using Successor = GraphTraits<const BlockT *>;
   using Predecessor = GraphTraits<Inverse<const BlockT *>>;
+  using BFICallbackVH =
+      bfi_detail::BFICallbackVH<BlockT, BlockFrequencyInfoImpl>;
 
   const BranchProbabilityInfoT *BPI = nullptr;
   const LoopInfoT *LI = nullptr;
   const FunctionT *F = nullptr;
-
-  class BFICallbackVH;
 
   // All blocks in reverse postorder.
   std::vector<const BlockT *> RPOT;
@@ -1033,16 +1036,19 @@ public:
   }
 };
 
-template <>
-class BlockFrequencyInfoImpl<BasicBlock>::BFICallbackVH : public CallbackVH {
-  BlockFrequencyInfoImpl<BasicBlock> *BFIImpl;
+namespace bfi_detail {
+
+template <class BFIImplT>
+class BFICallbackVH<BasicBlock, BFIImplT> : public CallbackVH {
+  BFIImplT *BFIImpl;
 
 public:
   BFICallbackVH() = default;
 
-  BFICallbackVH(const BasicBlock *BB,
-                BlockFrequencyInfoImpl<BasicBlock> *BFIImpl)
+  BFICallbackVH(const BasicBlock *BB, BFIImplT *BFIImpl)
       : CallbackVH(BB), BFIImpl(BFIImpl) {}
+
+  virtual ~BFICallbackVH() = default;
 
   void deleted() override {
     BFIImpl->forgetBlock(cast<BasicBlock>(getValPtr()));
@@ -1051,13 +1057,14 @@ public:
 
 /// Dummy implementation since MachineBasicBlocks aren't Values, so ValueHandles
 /// don't apply to them.
-template <>
-class BlockFrequencyInfoImpl<MachineBasicBlock>::BFICallbackVH {
+template <class BFIImplT>
+class BFICallbackVH<MachineBasicBlock, BFIImplT> {
 public:
   BFICallbackVH() = default;
-  BFICallbackVH(const MachineBasicBlock *,
-                BlockFrequencyInfoImpl<MachineBasicBlock> *) {}
+  BFICallbackVH(const MachineBasicBlock *, BFIImplT *) {}
 };
+
+} // end namespace bfi_detail
 
 template <class BT>
 void BlockFrequencyInfoImpl<BT>::calculate(const FunctionT &F,

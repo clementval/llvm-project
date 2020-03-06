@@ -89,61 +89,56 @@ DisassemblerSP Disassembler::FindPlugin(const ArchSpec &arch,
   return DisassemblerSP();
 }
 
-DisassemblerSP Disassembler::FindPluginForTarget(const TargetSP target_sp,
+DisassemblerSP Disassembler::FindPluginForTarget(const Target &target,
                                                  const ArchSpec &arch,
                                                  const char *flavor,
                                                  const char *plugin_name) {
-  if (target_sp && flavor == nullptr) {
+  if (flavor == nullptr) {
     // FIXME - we don't have the mechanism in place to do per-architecture
     // settings.  But since we know that for now we only support flavors on x86
     // & x86_64,
     if (arch.GetTriple().getArch() == llvm::Triple::x86 ||
         arch.GetTriple().getArch() == llvm::Triple::x86_64)
-      flavor = target_sp->GetDisassemblyFlavor();
+      flavor = target.GetDisassemblyFlavor();
   }
   return FindPlugin(arch, flavor, plugin_name);
 }
 
-static void ResolveAddress(const ExecutionContext &exe_ctx, const Address &addr,
-                           Address &resolved_addr) {
+static Address ResolveAddress(Target &target, const Address &addr) {
   if (!addr.IsSectionOffset()) {
+    Address resolved_addr;
     // If we weren't passed in a section offset address range, try and resolve
     // it to something
-    Target *target = exe_ctx.GetTargetPtr();
-    if (target) {
-      bool is_resolved =
-          target->GetSectionLoadList().IsEmpty() ?
-              target->GetImages().ResolveFileAddress(addr.GetOffset(),
-                                                     resolved_addr) :
-              target->GetSectionLoadList().ResolveLoadAddress(addr.GetOffset(),
-                                                              resolved_addr);
+    bool is_resolved = target.GetSectionLoadList().IsEmpty()
+                           ? target.GetImages().ResolveFileAddress(
+                                 addr.GetOffset(), resolved_addr)
+                           : target.GetSectionLoadList().ResolveLoadAddress(
+                                 addr.GetOffset(), resolved_addr);
 
-      // We weren't able to resolve the address, just treat it as a raw address
-      if (is_resolved && resolved_addr.IsValid())
-        return;
-    }
+    // We weren't able to resolve the address, just treat it as a raw address
+    if (is_resolved && resolved_addr.IsValid())
+      return resolved_addr;
   }
-  resolved_addr = addr;
+  return addr;
 }
 
 lldb::DisassemblerSP Disassembler::DisassembleRange(
     const ArchSpec &arch, const char *plugin_name, const char *flavor,
-    const ExecutionContext &exe_ctx, const AddressRange &range,
-    bool prefer_file_cache) {
-  if (range.GetByteSize() <= 0 || !exe_ctx.GetTargetPtr())
+    Target &target, const AddressRange &range, bool prefer_file_cache) {
+  if (range.GetByteSize() <= 0)
     return {};
 
   if (!range.GetBaseAddress().IsValid())
     return {};
 
-  lldb::DisassemblerSP disasm_sp = Disassembler::FindPluginForTarget(
-      exe_ctx.GetTargetSP(), arch, flavor, plugin_name);
+  lldb::DisassemblerSP disasm_sp =
+      Disassembler::FindPluginForTarget(target, arch, flavor, plugin_name);
 
   if (!disasm_sp)
     return {};
 
-  const size_t bytes_disassembled = disasm_sp->ParseInstructions(
-      exe_ctx.GetTargetRef(), range, nullptr, prefer_file_cache);
+  const size_t bytes_disassembled =
+      disasm_sp->ParseInstructions(target, range, nullptr, prefer_file_cache);
   if (bytes_disassembled == 0)
     return {};
 
@@ -175,24 +170,20 @@ Disassembler::DisassembleBytes(const ArchSpec &arch, const char *plugin_name,
 bool Disassembler::Disassemble(Debugger &debugger, const ArchSpec &arch,
                                const char *plugin_name, const char *flavor,
                                const ExecutionContext &exe_ctx,
-                               const AddressRange &disasm_range,
+                               const AddressRange &range,
                                uint32_t num_instructions,
                                bool mixed_source_and_assembly,
                                uint32_t num_mixed_context_lines,
                                uint32_t options, Stream &strm) {
-  if (!disasm_range.GetByteSize() || !exe_ctx.GetTargetPtr())
+  if (!range.GetByteSize() || !exe_ctx.GetTargetPtr())
     return false;
 
   lldb::DisassemblerSP disasm_sp(Disassembler::FindPluginForTarget(
-      exe_ctx.GetTargetSP(), arch, flavor, plugin_name));
+      exe_ctx.GetTargetRef(), arch, flavor, plugin_name));
 
   if (!disasm_sp)
     return false;
 
-  AddressRange range;
-  ResolveAddress(exe_ctx, disasm_range.GetBaseAddress(),
-                 range.GetBaseAddress());
-  range.SetByteSize(disasm_range.GetByteSize());
   const bool prefer_file_cache = false;
   size_t bytes_disassembled = disasm_sp->ParseInstructions(
       exe_ctx.GetTargetRef(), range, &strm, prefer_file_cache);
@@ -205,28 +196,22 @@ bool Disassembler::Disassemble(Debugger &debugger, const ArchSpec &arch,
   return true;
 }
 
-bool Disassembler::Disassemble(Debugger &debugger, const ArchSpec &arch,
-                               const char *plugin_name, const char *flavor,
-                               const ExecutionContext &exe_ctx,
-                               const Address &start_address,
-                               uint32_t num_instructions,
-                               bool mixed_source_and_assembly,
-                               uint32_t num_mixed_context_lines,
-                               uint32_t options, Stream &strm) {
+bool Disassembler::Disassemble(
+    Debugger &debugger, const ArchSpec &arch, const char *plugin_name,
+    const char *flavor, const ExecutionContext &exe_ctx, const Address &address,
+    uint32_t num_instructions, bool mixed_source_and_assembly,
+    uint32_t num_mixed_context_lines, uint32_t options, Stream &strm) {
   if (num_instructions == 0 || !exe_ctx.GetTargetPtr())
     return false;
 
   lldb::DisassemblerSP disasm_sp(Disassembler::FindPluginForTarget(
-      exe_ctx.GetTargetSP(), arch, flavor, plugin_name));
+      exe_ctx.GetTargetRef(), arch, flavor, plugin_name));
   if (!disasm_sp)
     return false;
 
-  Address addr;
-  ResolveAddress(exe_ctx, start_address, addr);
-
   const bool prefer_file_cache = false;
   size_t bytes_disassembled = disasm_sp->ParseInstructions(
-      exe_ctx.GetTargetRef(), addr, num_instructions, prefer_file_cache);
+      exe_ctx.GetTargetRef(), address, num_instructions, prefer_file_cache);
   if (bytes_disassembled == 0)
     return false;
 
@@ -1116,13 +1101,14 @@ InstructionList::GetIndexOfInstructionAtLoadAddress(lldb::addr_t load_addr,
   return GetIndexOfInstructionAtAddress(address);
 }
 
-size_t Disassembler::ParseInstructions(Target &target,
-                                       const AddressRange &range,
+size_t Disassembler::ParseInstructions(Target &target, AddressRange range,
                                        Stream *error_strm_ptr,
                                        bool prefer_file_cache) {
   const addr_t byte_size = range.GetByteSize();
   if (byte_size == 0 || !range.GetBaseAddress().IsValid())
     return 0;
+
+  range.GetBaseAddress() = ResolveAddress(target, range.GetBaseAddress());
 
   auto data_sp = std::make_shared<DataBufferHeap>(byte_size, '\0');
 
@@ -1149,13 +1135,15 @@ size_t Disassembler::ParseInstructions(Target &target,
   return 0;
 }
 
-size_t Disassembler::ParseInstructions(Target &target, const Address &start,
+size_t Disassembler::ParseInstructions(Target &target, Address start,
                                        uint32_t num_instructions,
                                        bool prefer_file_cache) {
   m_instruction_list.Clear();
 
   if (num_instructions == 0 || !start.IsValid())
     return 0;
+
+  start = ResolveAddress(target, start);
 
   // Calculate the max buffer size we will need in order to disassemble
   const addr_t byte_size = num_instructions * m_arch.GetMaximumOpcodeByteSize();
