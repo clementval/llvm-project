@@ -270,7 +270,7 @@ def OpenACC_ReductionOpAttr : StrEnumAttr<"ReductionOperationAttr",
     ]>;
 
 def OpenACC_ReductionOp : OpenACC_Op<"reduction", 
-    [SameOperandsAndResultType, IsolatedFromAbove]>,
+    [SameOperandsAndResultType, IsolatedFromAbove, InParallelScope]>,
     Arguments<(ins AnyType:$value, OpenACC_ReductionOpAttr:$op)>,
     Results<(outs AnyType)>  {
   let summary = "Reduce values among gangs.";

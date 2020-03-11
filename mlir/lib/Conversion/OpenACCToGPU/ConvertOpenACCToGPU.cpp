@@ -430,6 +430,12 @@ static void transformGangRedundant(acc::GangRedundantOp accGangRedundantOp,
 
   wrapper.thenRegion().takeBody(accGangRedundantOp.getBody());
 
+  
+  wrapper.walk([&](acc::GangRedundantEndOp op) { 
+    auto yield = builder.create<loop::YieldOp>(loc);
+    yield.getOperation()->moveBefore(op);
+    op.erase();
+  });
   builder.setInsertionPointAfter(wrapper);
   accGangRedundantOp.erase();
 }
