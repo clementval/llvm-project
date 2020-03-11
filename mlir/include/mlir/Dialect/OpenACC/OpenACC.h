@@ -15,7 +15,6 @@
 #define MLIR_DIALECT_OPENACC_DIALECT_H
 
 #include "mlir/IR/Dialect.h"
-#include "mlir/IR/FunctionSupport.h"
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {

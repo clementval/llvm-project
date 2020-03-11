@@ -7,9 +7,6 @@
 // =============================================================================
 
 #include "mlir/Dialect/OpenACC/OpenACC.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Matchers.h"
@@ -18,9 +15,6 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Value.h"
-#include "mlir/Support/MathExtras.h"
-#include "mlir/Support/STLExtras.h"
-#include "mlir/Transforms/SideEffectsInterface.h"
 
 using namespace mlir;
 using namespace acc;
@@ -317,6 +311,7 @@ static void printLoopOp(LoopOp &op, OpAsmPrinter &printer) {
 
   printer.printOptionalAttrDictWithKeyword(op.getAttrs(), formattedAttrs);
 }
+
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions

@@ -31,18 +31,7 @@ def OpenACC_Dialect : Dialect {
 
 // Base class for Loop dialect ops.
 class OpenACC_Op<string mnemonic, list<OpTrait> traits = []> :
-  Op<OpenACC_Dialect, mnemonic, traits> {
-
-  // For every standard op, there needs to be a:
-  //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
-  //   * LogicalResult verify(${C++ class of Op} op)
-  //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
-  //                                         OperationState &result)
-  // functions.
-  let printer = [{ return ::print(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
-  let parser = [{ return ::parse$cppClass(parser, result); }];
-}
+  Op<OpenACC_Dialect, mnemonic, traits>;
 
 class OpenACC_ScopeVerifier<string opName> : PredOpTrait<
   "op must appear in a '" # opName #"' block",
@@ -54,7 +43,7 @@ def ImplicitOpenACCTerminator
 
 def InParallelScope : OpenACC_ScopeVerifier<"ParallelOp">;
 
-def ParallelOp : OpenACC_Op<"parallel",
+def OpenACC_ParallelOp : OpenACC_Op<"parallel",
                             [SingleBlockImplicitTerminator<"ParallelEndOp">]> {
   let summary = "parallel construct";
   let description = [{
@@ -123,7 +112,7 @@ def ParallelOp : OpenACC_Op<"parallel",
   }];
 }
 
-def ParallelEndOp : OpenACC_Op<"_parallel_end", [Terminator]> {
+def OpenACC_ParallelEndOp : OpenACC_Op<"_parallel_end", [Terminator]> {
   let arguments = (ins);
   let results = (outs);
 
@@ -132,7 +121,7 @@ def ParallelEndOp : OpenACC_Op<"_parallel_end", [Terminator]> {
   let verifier = [{ return success(); }];
 }
 
-def GangRedundantOp : OpenACC_Op<"gang_redundant",
+def OpenACC_GangRedundantOp : OpenACC_Op<"gang_redundant",
     [SingleBlockImplicitTerminator<"GangRedundantEndOp">]> {
   let summary = "gang redundant";
   let description = [{
@@ -160,7 +149,7 @@ def GangRedundantOp : OpenACC_Op<"gang_redundant",
   }];
 }
 
-def GangRedundantEndOp : OpenACC_Op<"_gang_redundant_end", [Terminator]> {
+def OpenACC_GangRedundantEndOp : OpenACC_Op<"_gang_redundant_end", [Terminator]> {
   let arguments = (ins);
   let results = (outs);
   let parser = [{ return parseNoIOOp(parser, result); }];
@@ -168,7 +157,7 @@ def GangRedundantEndOp : OpenACC_Op<"_gang_redundant_end", [Terminator]> {
   let verifier = [{ return success(); }];
 }
 
-def LoopOp : OpenACC_Op<"loop",
+def OpenACC_LoopOp : OpenACC_Op<"loop",
                         [SingleBlockImplicitTerminator<"LoopEndOp">]> {
   let summary = "loop construct";
   let description = [{
@@ -250,12 +239,45 @@ def LoopOp : OpenACC_Op<"loop",
   }];
 }
 
-def LoopEndOp : OpenACC_Op<"_loop_end", [Terminator]> {
+def OpenACC_LoopEndOp : OpenACC_Op<"_loop_end", [Terminator]> {
   let arguments = (ins);
   let results = (outs);
 
   let parser = [{ return parseNoIOOp(parser, result); }];
   let printer = [{ printNoIOOp(getOperation(), p); }];
+  let verifier = [{ return success(); }];
+}
+
+// Possible reduction operator according to OpenACC 3.0 - 2.5.13.
+def OpenACC_ReductionOpAdd : StrEnumAttrCase<"add">;
+def OpenACC_ReductionOpAnd : StrEnumAttrCase<"and">;
+def OpenACC_ReductionOpMax : StrEnumAttrCase<"max">;
+def OpenACC_ReductionOpMin : StrEnumAttrCase<"min">;
+def OpenACC_ReductionOpMul : StrEnumAttrCase<"mul">;
+def OpenACC_ReductionOpOr : StrEnumAttrCase<"or">;
+def OpenACC_ReductionOpXor : StrEnumAttrCase<"xor">;
+
+def OpenACC_ReductionOpAttr : StrEnumAttr<"ReductionOperationAttr",
+    "reduction operator supported by acc.reduction",
+    [
+      OpenACC_ReductionOpAdd,
+      OpenACC_ReductionOpAnd,
+      OpenACC_ReductionOpMax,
+      OpenACC_ReductionOpMin,
+      OpenACC_ReductionOpMul,
+      OpenACC_ReductionOpOr,
+      OpenACC_ReductionOpXor
+    ]>;
+
+def OpenACC_ReductionOp : OpenACC_Op<"reduction", 
+    [SameOperandsAndResultType, IsolatedFromAbove]>,
+    Arguments<(ins AnyType:$value, OpenACC_ReductionOpAttr:$op)>,
+    Results<(outs AnyType)>  {
+  let summary = "Reduce values among gangs.";
+  let description = [{
+      // TODO
+  }];
+  //let verifier = [{ return ::verifyReduction(*this); }]; TODO
   let verifier = [{ return success(); }];
 }
 
