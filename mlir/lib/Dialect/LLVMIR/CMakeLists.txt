@@ -3,9 +3,8 @@ add_mlir_dialect_library(MLIRLLVMIR
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/LLVMIR
-  )
-add_dependencies(MLIRLLVMIR
-  MLIRControlFlowInterfacesIncGen
+
+  DEPENDS
   MLIRLLVMOpsIncGen
   MLIRLLVMConversionsIncGen
   )
@@ -15,8 +14,11 @@ target_link_libraries(MLIRLLVMIR
   LLVMCore
   LLVMSupport
   LLVMFrontendOpenMP
+  MLIRCallInterfaces
+  MLIRControlFlowInterfaces
   MLIROpenMP
   MLIRIR
+  MLIRSideEffects
   MLIRSupport
   )
 
@@ -25,8 +27,8 @@ add_mlir_dialect_library(MLIRNVVMIR
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/LLVMIR
-  )
-add_dependencies(MLIRNVVMIR
+
+  DEPENDS
   MLIRNVVMOpsIncGen
   MLIRNVVMConversionsIncGen
   )
@@ -35,6 +37,7 @@ target_link_libraries(MLIRNVVMIR
   LLVMAsmParser
   MLIRIR
   MLIRLLVMIR
+  MLIRSideEffects
   LLVMSupport
   LLVMCore
   )
@@ -44,8 +47,8 @@ add_mlir_dialect_library(MLIRROCDLIR
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/LLVMIR
-  )
-add_dependencies(MLIRROCDLIR
+
+  DEPENDS
   MLIRROCDLOpsIncGen
   MLIRROCDLConversionsIncGen
   )
@@ -55,4 +58,5 @@ target_link_libraries(MLIRROCDLIR
   LLVMCore
   LLVMSupport
   MLIRIR
+  MLIRSideEffects
   )

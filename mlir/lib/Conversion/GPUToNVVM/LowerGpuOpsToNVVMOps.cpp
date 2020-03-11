@@ -15,6 +15,7 @@
 
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/GPU/Passes.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -709,6 +710,14 @@ public:
     });
 
     OwningRewritePatternList patterns;
+
+    // Apply in-dialect lowering first. In-dialect lowering will replace ops
+    // which need to be lowered further, which is not supported by a single
+    // conversion pass.
+    populateGpuRewritePatterns(m.getContext(), patterns);
+    applyPatternsGreedily(m, patterns);
+    patterns.clear();
+
     populateStdToLLVMConversionPatterns(converter, patterns);
     populateGpuToNVVMConversionPatterns(converter, patterns);
     LLVMConversionTarget target(getContext());
@@ -740,8 +749,8 @@ void mlir::populateGpuToNVVMConversionPatterns(
                                           NVVM::BlockIdYOp, NVVM::BlockIdZOp>,
               GPUIndexIntrinsicOpLowering<gpu::GridDimOp, NVVM::GridDimXOp,
                                           NVVM::GridDimYOp, NVVM::GridDimZOp>,
-              GPUAllReduceOpLowering, GPUShuffleOpLowering, GPUFuncOpLowering,
-              GPUReturnOpLowering>(converter);
+              GPUShuffleOpLowering, GPUFuncOpLowering, GPUReturnOpLowering>(
+          converter);
   patterns.insert<OpToFuncCallLowering<AbsFOp>>(converter, "__nv_fabsf",
                                                 "__nv_fabs");
   patterns.insert<OpToFuncCallLowering<CeilFOp>>(converter, "__nv_ceilf",

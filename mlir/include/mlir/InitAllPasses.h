@@ -134,7 +134,8 @@ inline void registerAllPasses() {
   createLinalgToSPIRVPass();
 
   // Vulkan
-  createConvertGpuLaunchFuncToVulkanCallsPass();
+  createConvertGpuLaunchFuncToVulkanLaunchFuncPass();
+  createConvertVulkanLaunchFuncToVulkanCallsPass();
 }
 
 } // namespace mlir

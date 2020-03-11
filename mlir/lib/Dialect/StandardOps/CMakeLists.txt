@@ -5,15 +5,16 @@ add_mlir_dialect_library(MLIRStandardOps
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/StandardOps
-  )
-add_dependencies(MLIRStandardOps
-  MLIRCallOpInterfacesIncGen
-  MLIRControlFlowInterfacesIncGen
+
+  DEPENDS
   MLIRStandardOpsIncGen
   )
 target_link_libraries(MLIRStandardOps
   PUBLIC
+  MLIRCallInterfaces
+  MLIRControlFlowInterfaces
   MLIREDSC
   MLIRIR
+  MLIRSideEffects
   LLVMSupport
   )

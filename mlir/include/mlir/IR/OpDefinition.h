@@ -870,16 +870,6 @@ public:
   }
 };
 
-/// This class adds property that the operation has no side effects.
-template <typename ConcreteType>
-class HasNoSideEffect : public TraitBase<ConcreteType, HasNoSideEffect> {
-public:
-  static AbstractOperation::OperationProperties getTraitProperties() {
-    return static_cast<AbstractOperation::OperationProperties>(
-        OperationProperty::NoSideEffect);
-  }
-};
-
 /// This class verifies that all operands of the specified op have a float type,
 /// a vector thereof, or a tensor thereof.
 template <typename ConcreteType>
@@ -1286,6 +1276,10 @@ private:
   /// A pointer to the impl concept object.
   Concept *impl;
 };
+
+//===----------------------------------------------------------------------===//
+// Common Operation Folders/Parsers/Printers
+//===----------------------------------------------------------------------===//
 
 // These functions are out-of-line implementations of the methods in UnaryOp and
 // BinaryOp, which avoids them being template instantiated/duplicated.

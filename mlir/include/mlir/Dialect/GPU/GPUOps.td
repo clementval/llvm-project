@@ -482,7 +482,7 @@ def GPU_YieldOp : GPU_Op<"yield", [Terminator]>,
   }];
 }
 
-// These mirror the XLA ComparisonDirection enum.
+// add, mul mirror the XLA ComparisonDirection enum.
 def GPU_AllReduceOpAdd : StrEnumAttrCase<"add">;
 def GPU_AllReduceOpAnd : StrEnumAttrCase<"and">;
 def GPU_AllReduceOpMax : StrEnumAttrCase<"max">;
@@ -524,8 +524,8 @@ def GPU_AllReduceOp : GPU_Op<"all_reduce",
     ```
     compute the sum of each work item's %0 value. The first version specifies
     the accumulation as operation, whereas the second version specifies the
-    accumulation as code region. The accumulation operation must either be
-    `add` or `mul`.
+    accumulation as code region. The accumulation operation must be one of:
+    `add`, `and`, `max`, `min`, `mul`, `or`, `xor`.
 
     Either none or all work items of a workgroup need to execute this op
     in convergence.

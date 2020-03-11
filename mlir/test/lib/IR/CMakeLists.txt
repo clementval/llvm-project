@@ -1,6 +1,7 @@
 add_llvm_library(MLIRTestIR
   TestFunc.cpp
   TestMatchers.cpp
+  TestSideEffects.cpp
   TestSymbolUses.cpp
 
   ADDITIONAL_HEADER_DIRS
@@ -11,4 +12,5 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/../TestDialect)
 target_link_libraries(MLIRTestIR
   PUBLIC
   MLIRPass
+  MLIRTestDialect
   )

@@ -14,19 +14,20 @@ add_public_tablegen_target(MLIRTestOpsIncGen)
 add_llvm_library(MLIRTestDialect
   TestDialect.cpp
   TestPatterns.cpp
-)
-add_dependencies(MLIRTestDialect
-  MLIRControlFlowInterfacesIncGen
+
+  DEPENDS
   MLIRTestOpsIncGen
-  MLIRTypeInferOpInterfaceIncGen
 )
 target_link_libraries(MLIRTestDialect
   PUBLIC
+  MLIRControlFlowInterfaces
   MLIRDialect
   MLIRIR
   MLIRLinalgTransforms
   MLIRPass
+  MLIRStandardOps
   MLIRTransforms
   MLIRTransformUtils
+  MLIRInferTypeOpInterface
   LLVMSupport
 )
