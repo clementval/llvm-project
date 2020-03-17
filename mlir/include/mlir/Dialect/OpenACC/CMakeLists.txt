@@ -1,1 +1,1 @@
-add_mlir_dialect(OpenACC OpenACC)
+add_mlir_dialect(OpenACC acc OpenACC)
