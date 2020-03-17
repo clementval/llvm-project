@@ -13,9 +13,9 @@
 #ifndef OPENACC_TD
 #define OPENACC_TD
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
+include "mlir/Interfaces/SideEffects.td"
+
 
 def OpenACC_Dialect : Dialect {
   let name = "acc";
@@ -151,7 +151,6 @@ def OpenACC_GangRedundantOp : OpenACC_Op<"gang_redundant",
 
 def OpenACC_GangRedundantEndOp : OpenACC_Op<"_gang_redundant_end", [Terminator]> {
   let arguments = (ins);
-  let results = (outs);
   let parser = [{ return parseNoIOOp(parser, result); }];
   let printer = [{ printNoIOOp(getOperation(), p); }];
   let verifier = [{ return success(); }];
@@ -168,7 +167,7 @@ def OpenACC_LoopOp : OpenACC_Op<"loop",
 
   let parser = [{ return parseLoopOp(parser, result); }];
   let printer = [{ printLoopOp(*this, p); }];
-
+  let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$region);
   let verifier = [{ return success(); }];
   let skipDefaultBuilders = 1;
@@ -248,6 +247,18 @@ def OpenACC_LoopEndOp : OpenACC_Op<"_loop_end", [Terminator]> {
   let verifier = [{ return success(); }];
 }
 
+def OpenACC_YieldOp : OpenACC_Op<"yield", [Terminator]> {
+  let summary = "Acc yield and termination operation";
+  let description = [{
+   
+  }];
+  let arguments = (ins Variadic<AnyType>:$results);
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result",
+              [{ /* nothing to do */ }]>
+  ];
+}
+
 // Possible reduction operator according to OpenACC 3.0 - 2.5.13.
 def OpenACC_ReductionOpAdd : StrEnumAttrCase<"add">;
 def OpenACC_ReductionOpAnd : StrEnumAttrCase<"and">;
@@ -270,7 +281,7 @@ def OpenACC_ReductionOpAttr : StrEnumAttr<"ReductionOperationAttr",
     ]>;
 
 def OpenACC_ReductionOp : OpenACC_Op<"reduction", 
-    [SameOperandsAndResultType, IsolatedFromAbove, InParallelScope]>,
+    [SameOperandsAndResultType, IsolatedFromAbove]>,
     Arguments<(ins AnyType:$value, OpenACC_ReductionOpAttr:$op)>,
     Results<(outs AnyType)>  {
   let summary = "Reduce values among gangs.";
