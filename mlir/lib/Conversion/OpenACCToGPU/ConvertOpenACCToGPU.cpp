@@ -36,17 +36,17 @@ private:
                                       const SymbolTable &parentSymbolTable);
 };
 
-struct ParallelOpOutling final : public OpRewritePattern<acc::ParallelOp> {
-  using OpRewritePattern<acc::ParallelOp>::OpRewritePattern;
+// struct ParallelOpOutling final : public OpRewritePattern<acc::ParallelOp> {
+//   using OpRewritePattern<acc::ParallelOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(acc::ParallelOp parallelOp,
-                                     PatternRewriter &rewriter) const override;
-};
+//   PatternMatchResult matchAndRewrite(acc::ParallelOp parallelOp,
+//                                      PatternRewriter &rewriter) const override;
+// };
 
-struct SequentialLoopOpNesting final : public OpRewritePattern<acc::LoopOp> {
-  using OpRewritePattern<acc::LoopOp>::OpRewritePattern;
+struct ReductionOpLowering final : public OpRewritePattern<acc::ReductionOp> {
+  using OpRewritePattern<acc::ReductionOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(acc::LoopOp accLoopOp,
+  PatternMatchResult matchAndRewrite(acc::ReductionOp reductionOp,
                                      PatternRewriter &rewriter) const override;
 };
 
@@ -114,47 +114,41 @@ static FuncOp outlineParallelRegion(acc::ParallelOp parallelOp,
   return outlinedRegion;
 }
 
+// PatternMatchResult
+// ParallelOpOutling::matchAndRewrite(acc::ParallelOp parallelOp,
+//                                    PatternRewriter &rewriter) const {
+//   auto module = parallelOp.getParentOfType<ModuleOp>();
+//   SymbolTable symbolTable(module);
+//   llvm::SetVector<Value> operands;
+//   llvm::SetVector<Value> privates;
+//   auto outlinedParallelRegion =
+//       outlineParallelRegion(parallelOp, operands, privates);
+//   symbolTable.insert(outlinedParallelRegion);
+
+//   // replace region with newly outlined function call
+//   OpBuilder builder(parallelOp.getContext());
+//   builder.create<CallOp>(parallelOp.getLoc(), outlinedParallelRegion,
+//                          operands.getArrayRef());
+//   // inlineBeneficiaryOps(kernelFunc, launchFuncOp);
+
+//   rewriter.eraseOp(parallelOp);
+//   return matchSuccess();
+// }
+
 PatternMatchResult
-ParallelOpOutling::matchAndRewrite(acc::ParallelOp parallelOp,
-                                   PatternRewriter &rewriter) const {
-  auto module = parallelOp.getParentOfType<ModuleOp>();
-  SymbolTable symbolTable(module);
-  llvm::SetVector<Value> operands;
-  llvm::SetVector<Value> privates;
-  auto outlinedParallelRegion =
-      outlineParallelRegion(parallelOp, operands, privates);
-  symbolTable.insert(outlinedParallelRegion);
+ReductionOpLowering::matchAndRewrite(acc::ReductionOp op,
+                                     PatternRewriter &rewriter) const {
+  Location loc = op.getLoc();
+  auto gpuBarrierOp0 = rewriter.create<gpu::BarrierOp>(loc);
+  auto gpuAllReduceOp = rewriter.create<gpu::AllReduceOp>(loc, 
+      op.getOperation()->getResultTypes(), op.getOperand(), 
+      rewriter.getStringAttr(op.op())); 
+  auto gpuBarrierOp1 = rewriter.create<gpu::BarrierOp>(loc);
+  rewriter.replaceOp(op, {gpuAllReduceOp});
+  //gpuBarrierOp0.getOperation()->moveBefore(gpuAllReduceOp);
 
-  // replace region with newly outlined function call
-  OpBuilder builder(parallelOp.getContext());
-  builder.create<CallOp>(parallelOp.getLoc(), outlinedParallelRegion,
-                         operands.getArrayRef());
-  // inlineBeneficiaryOps(kernelFunc, launchFuncOp);
-
-  rewriter.eraseOp(parallelOp);
   return matchSuccess();
 }
-
-// PatternMatchResult
-// SequentialLoopOpNesting::matchAndRewrite(acc::LoopOp accLoopOp,
-//                                          PatternRewriter &rewriter) const {
-//   if(accLoopOp.isSeq()) {
-//     auto parentOp = accLoopOp.getParentOfType<acc::LoopOp>();
-//     if(!parentOp)
-//       return matchFailure();
-//     auto gangRedundantOp = accLoopOp.getParentOfType<acc::GangRedundantOp>();
-//     if(gangRedundantOp)
-//       return matchFailure();
-//     Location loc = accLoopOp.getLoc();
-//     auto gangRedOp = rewriter.create<acc::GangRedundantOp>(loc);
-//     rewriter.setInsertionPointToStart(&gangRedOp.getBody().front());
-//     auto gangRedundantTerminator =
-//     rewriter.create<acc::GangRedundantEndOp>(loc);
-//     accLoopOp.getOperation()->moveBefore(gangRedundantTerminator);
-//     return matchSuccess();
-//   }
-//   return matchFailure();
-// }
 
 template <typename OpTy>
 static void extractRegionBeforeItself(OpTy baseOp) {
@@ -601,21 +595,24 @@ void OpenACCToGPULoweringPass::runOnModule() {
   target.addLegalDialect<gpu::GPUDialect>();
 
   // target.addLegalOp<acc::ParallelOp>();
-  // target.addLegalOp<acc::ParallelEndOp>();
+  target.addLegalOp<acc::ParallelEndOp>();
   // target.addLegalOp<acc::LoopOp>();
+  target.addLegalOp<acc::ParallelOp>(); 
+  target.addLegalOp<acc::LoopOp>(); 
   target.addLegalOp<acc::LoopEndOp>();
+  target.addLegalOp<acc::GangRedundantOp>();
   target.addLegalOp<acc::GangRedundantEndOp>();
 
   // If operation is considered legal the rewrite pattern in not called.
   OwningRewritePatternList patterns;
-  // patterns.insert<SequentialLoopOpNesting>(&getContext());
-  // patterns.insert<ParallelOpOutling>(&getContext());
-  // patterns.insert<TerminatorOpLowering<acc::ParallelEndOp>>(&getContext());
-  // patterns.insert<TerminatorOpLowering<acc::LoopEndOp>>(&getContext());
+  patterns.insert<ReductionOpLowering>(&getContext());
 
   auto m = getModule();
   SymbolTable symbolTable(m);
   bool modified = false;
+
+  if (failed(applyPartialConversion(m, target, patterns)))
+    signalPassFailure();
 
   for (auto func : getModule().getOps<FuncOp>()) {
     Block::iterator insertPt(func.getOperation()->getNextNode());
@@ -676,7 +673,6 @@ void OpenACCToGPULoweringPass::runOnModule() {
       createLaunchParallelRegion(parallelOp, outlinedParallelRegionKernel,
                                  numGangs, numWorkers, operands.getArrayRef());
 
-
       cleanUpUnsuedIndexOps(outlinedParallelRegionKernel, indexOps);                                 
 
       modified = true;
@@ -689,8 +685,8 @@ void OpenACCToGPULoweringPass::runOnModule() {
     getModule().setAttr(gpu::GPUDialect::getContainerModuleAttrName(),
                         UnitAttr::get(&getContext()));
 
-  if (failed(applyPartialConversion(m, target, patterns)))
-    signalPassFailure();
+  // if (failed(applyPartialConversion(m, target, patterns)))
+  //   signalPassFailure();
 }
 
 std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertOpenACCToGPUPass() {
