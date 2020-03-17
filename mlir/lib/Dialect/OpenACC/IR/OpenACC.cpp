@@ -273,6 +273,10 @@ static ParseResult parseLoopOp(OpAsmParser &parser, OperationState &state) {
   if (succeeded(parser.parseOptionalKeyword(LoopOp::getSeqAttrName())))
     state.addAttribute(LoopOp::getSeqAttrName(), builder.getUnitAttr());
 
+  // Parse optional results in case there is a reduce.
+  if (parser.parseOptionalArrowTypeList(state.types))
+    return failure();
+
   if (failed(parseRegions<LoopOp>(parser, state)))
     return failure();
 
