@@ -409,7 +409,8 @@ static void mapLoopToGrid(acc::LoopOp accLoopOp,
   } else {
   }
 
-  accLoopOp.walk([](acc::LoopEndOp op) { op.erase(); });
+  // accLoopOp.walk([](acc::LoopEndOp op) { op.erase(); });
+  accLoopOp.walk([](acc::YieldOp op) { op.erase(); });
   extractRegionBeforeItself(accLoopOp);
   accLoopOp.erase();
 }
@@ -599,7 +600,7 @@ void OpenACCToGPULoweringPass::runOnModule() {
   // target.addLegalOp<acc::LoopOp>();
   target.addLegalOp<acc::ParallelOp>(); 
   target.addLegalOp<acc::LoopOp>(); 
-  target.addLegalOp<acc::LoopEndOp>();
+  target.addLegalOp<acc::YieldOp>();
   target.addLegalOp<acc::GangRedundantOp>();
   target.addLegalOp<acc::GangRedundantEndOp>();
 

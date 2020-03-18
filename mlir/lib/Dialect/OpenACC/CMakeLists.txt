@@ -3,19 +3,19 @@ add_mlir_dialect_library(MLIROpenACC
   
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/OpenACC
-)
-add_dependencies(MLIROpenACC
+
+  DEPENDS
   MLIROpenACCIncGen
-  MLIRIR
-  MLIRLLVMIR
-  MLIRSupport
-  MLIRTransformUtils
-  LLVMSupport
 )
 target_link_libraries(MLIROpenACC 
+  PUBLIC
   MLIRIR
+  MLIREDSC
   MLIRLLVMIR
   MLIRSupport
+  MLIRSideEffects
+  MLIRStandardOps
   MLIRTransformUtils
   LLVMSupport
 )
+

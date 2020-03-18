@@ -250,6 +250,11 @@ void ParallelOp::build(Builder *builder, OperationState &state) {
 // LoopOp
 //===----------------------------------------------------------------------===//
 
+void LoopOp::build(Builder *builder, OperationState &result) {
+  Region *bodyRegion = result.addRegion();
+  LoopOp::ensureTerminator(*bodyRegion, *builder, result.location);
+}
+
 // Parse acc.loop operation
 // operation := `acc.loop` `gang?` `vector?` `seq?`
 //                         region attr-dict?
@@ -304,16 +309,102 @@ static void printLoopOp(LoopOp &op, OpAsmPrinter &printer) {
   if ((execMapping & OpenACCExecMapping::VECTOR) == OpenACCExecMapping::VECTOR)
     printer << " " << LoopOp::getVectorAttrName();
 
-
   printFormattedAttr(op, printer, LoopOp::getSeqAttrName(), false);
 
-  printer.printRegion(op.getBody(), false, false);  
+  if(op.getNumResults() > 0)
+    printer << " -> (" << op.getResultTypes() << ")";
+
+  printer.printRegion(op.getBody(), false, true);
 
   SmallVector<StringRef, 1> formattedAttrs;
   formattedAttrs.push_back(LoopOp::getExecutionMappingAttrName());
   formattedAttrs.push_back(LoopOp::getSeqAttrName());
 
   printer.printOptionalAttrDictWithKeyword(op.getAttrs(), formattedAttrs);
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+static LogicalResult verify(YieldOp op) {
+  auto parentOp = op.getParentOp();
+  auto results = parentOp->getResults();
+  auto operands = op.getOperands();
+
+  if (isa<acc::LoopOp>(parentOp) || isa<acc::ParallelOp>(parentOp)) {
+    if (parentOp->getNumResults() != op.getNumOperands())
+      return op.emitOpError() << "parent of yield must have same number of "
+                                 "results as the yield operands";
+    for (auto e : llvm::zip(results, operands)) {
+      if (std::get<0>(e).getType() != std::get<1>(e).getType())
+        return op.emitOpError()
+               << "types mismatch between yield op and its parent";
+    }
+  // } else if (isa<ParallelOp>(parentOp)) {
+  //   if (op.getNumOperands() != 0)
+  //     return op.emitOpError()
+  //            << "yield inside loop.parallel is not allowed to have operands";
+  } else {
+    return op.emitOpError()
+           << "yield only terminates Loop or Parallel regions";
+  }
+
+  return success();
+}
+
+static ParseResult parseYieldOp(OpAsmParser &parser, OperationState &result) {
+  SmallVector<OpAsmParser::OperandType, 4> operands;
+  SmallVector<Type, 4> types;
+  llvm::SMLoc loc = parser.getCurrentLocation();
+  // Parse variadic operands list, their types, and resolve operands to SSA
+  // values.
+  if (parser.parseOperandList(operands) ||
+      parser.parseOptionalColonTypeList(types) ||
+      parser.resolveOperands(operands, types, loc, result.operands))
+    return failure();
+  return success();
+}
+
+static void printYieldOp(YieldOp &op, OpAsmPrinter &p) {
+  p << op.getOperationName();
+  if (op.getNumOperands() != 0)
+    p << ' ' << op.getOperands() << " : " << op.getOperandTypes();
+}
+
+//===----------------------------------------------------------------------===//
+// ReductionOp
+//===----------------------------------------------------------------------===//
+
+// void ReductionOp::build(Builder *builder, OperationState &result, 
+//     Value operand) {
+//   auto type = operand.getType();
+//   result.addOperands(operand);
+//   Region *bodyRegion = result.addRegion();
+
+//   Block *b = new Block();
+//   b->addArguments(ArrayRef<Type>{type, type});
+//   bodyRegion->getBlocks().insert(bodyRegion->end(), b);
+// }
+
+static LogicalResult verify(ReductionOp op) {
+  // The region of a ReduceOp has two arguments of the same type as its operand.
+  // auto type = op.operand().getType();
+  // Block &block = op.reductionOperator().front();
+  // if (block.empty())
+  //   return op.emitOpError("the block inside reduce should not be empty");
+  // if (block.getNumArguments() != 2 ||
+  //     llvm::any_of(block.getArguments(), [&](const BlockArgument &arg) {
+  //       return arg.getType() != type;
+  //     }))
+  //   return op.emitOpError()
+  //          << "expects two arguments to reduce block of type " << type;
+
+  // // Check that the block is terminated by a ReduceReturnOp.
+  // if (!isa<ReduceReturnOp>(block.getTerminator()))
+  //   return op.emitOpError("the block inside reduce should be terminated with a "
+  //                         "'loop.reduce.return' op");
+
+  return success();
 }
 
 
@@ -341,3 +432,5 @@ void acc::LoopOp::getCanonicalizationPatterns(
     OwningRewritePatternList &patterns, MLIRContext *context) {
   patterns.insert<OpenACCLoopEmptyConstructFolder>(context);
 }
+
+

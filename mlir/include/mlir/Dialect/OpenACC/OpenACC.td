@@ -56,9 +56,9 @@ def OpenACC_ParallelOp : OpenACC_Op<"parallel",
   }];
 
   let builders = [OpBuilder<"Builder *, OperationState &">];
-  let parser = [{ return parseParallelOp(parser, result); }];
   let printer = [{ printParallelOp(*this, p); }];
 
+  let parser = [{ return parseParallelOp(parser, result); }];
   let arguments = (ins Variadic<AnyType>:$privateArgs);
   let regions = (region SizedRegion<1>:$region);
   let verifier = [{ return success(); }];
@@ -157,12 +157,13 @@ def OpenACC_GangRedundantEndOp : OpenACC_Op<"_gang_redundant_end", [Terminator]>
 }
 
 def OpenACC_LoopOp : OpenACC_Op<"loop",
-                        [SingleBlockImplicitTerminator<"LoopEndOp">]> {
+                        [SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "loop construct";
   let description = [{
     The "acc.loop"
   }];
 
+  let skipDefaultBuilders = 1;
   let builders = [OpBuilder<"Builder *, OperationState &">];
 
   let parser = [{ return parseLoopOp(parser, result); }];
@@ -170,7 +171,6 @@ def OpenACC_LoopOp : OpenACC_Op<"loop",
   let results = (outs Variadic<AnyType>:$results);
   let regions = (region SizedRegion<1>:$region);
   let verifier = [{ return success(); }];
-  let skipDefaultBuilders = 1;
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
@@ -253,6 +253,9 @@ def OpenACC_YieldOp : OpenACC_Op<"yield", [Terminator]> {
    
   }];
   let arguments = (ins Variadic<AnyType>:$results);
+  let parser = [{ return parseYieldOp(parser, result); }];
+  let verifier = [{ return ::verify(*this); }];
+  let printer = [{ printYieldOp(*this, p); }];
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result",
               [{ /* nothing to do */ }]>
@@ -282,9 +285,20 @@ def OpenACC_ReductionOpAttr : StrEnumAttr<"ReductionOperationAttr",
 
 def OpenACC_ReductionOp : OpenACC_Op<"reduction", 
     [SameOperandsAndResultType, IsolatedFromAbove]>,
-    Arguments<(ins AnyType:$value, OpenACC_ReductionOpAttr:$op)>,
+    Arguments<(ins AnyType:$operand, OpenACC_ReductionOpAttr:$op)>,
     Results<(outs AnyType)>  {
+
+
+  // let skipDefaultBuilders = 1;
+  // let builders = [
+  //   OpBuilder<"Builder *builder, OperationState &result, "
+  //             "Value operand">
+  // ];
+
+  // let arguments = (ins AnyType:$operand);
+
   let summary = "Reduce values among gangs.";
+  let verifier = [{return ::verify(*this); }];
   let description = [{
       // TODO
   }];

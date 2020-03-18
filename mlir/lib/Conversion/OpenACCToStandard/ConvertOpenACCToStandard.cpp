@@ -79,7 +79,7 @@ void OpenACCToSeqConversionPass::runOnModule() {
   // If operation is considered legal the rewrite pattern in not called.
   OwningRewritePatternList patterns;
   patterns.insert<TerminatorOpLowering<acc::ParallelEndOp>>(&getContext());
-  patterns.insert<TerminatorOpLowering<acc::LoopEndOp>>(&getContext());
+  patterns.insert<TerminatorOpLowering<acc::YieldOp>>(&getContext());
 
   auto m = getModule();
   convertToSequential(m);
