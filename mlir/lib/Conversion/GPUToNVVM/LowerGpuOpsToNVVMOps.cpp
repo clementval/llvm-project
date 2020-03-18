@@ -39,7 +39,7 @@ struct GPUAllReduceOpLowering : public ConvertToLLVMPattern {
                              lowering_.getDialect()->getContext(), lowering_),
         int32Type(LLVM::LLVMType::getInt32Ty(lowering_.getDialect())) {}
 
-  PatternMatchResult
+  LogicalResult
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = op->getLoc();
@@ -55,7 +55,7 @@ struct GPUAllReduceOpLowering : public ConvertToLLVMPattern {
     Value result = createBlockReduce(loc, operand, factory, rewriter);
 
     rewriter.replaceOp(op, {result});
-    return matchSuccess();
+    return success();
   }
 
 private:

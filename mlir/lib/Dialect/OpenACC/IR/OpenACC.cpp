@@ -293,6 +293,7 @@ static ParseResult parseLoopOp(OpAsmParser &parser, OperationState &state) {
 
 static void printLoopOp(LoopOp &op, OpAsmPrinter &printer) {
   printer << LoopOp::getOperationName();
+  bool printBlockTerminators = false;
 
   unsigned execMapping = (op.getAttrOfType<IntegerAttr>(
                               LoopOp::getExecutionMappingAttrName()) != nullptr)
@@ -311,10 +312,12 @@ static void printLoopOp(LoopOp &op, OpAsmPrinter &printer) {
 
   printFormattedAttr(op, printer, LoopOp::getSeqAttrName(), false);
 
-  if(op.getNumResults() > 0)
+  if(op.getNumResults() > 0) {
     printer << " -> (" << op.getResultTypes() << ")";
+    printBlockTerminators = true;
+  }
 
-  printer.printRegion(op.getBody(), false, true);
+  printer.printRegion(op.getBody(), false, printBlockTerminators);
 
   SmallVector<StringRef, 1> formattedAttrs;
   formattedAttrs.push_back(LoopOp::getExecutionMappingAttrName());
@@ -418,13 +421,13 @@ static LogicalResult verify(ReductionOp op) {
 struct OpenACCLoopEmptyConstructFolder : public OpRewritePattern<acc::LoopOp> {
   using OpRewritePattern<acc::LoopOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(acc::LoopOp loopOp,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(acc::LoopOp loopOp,
+                                PatternRewriter &rewriter) const override {
     // Check that the body only contains a terminator.
     if (!has_single_element(loopOp.getBody().front()))
-      return matchFailure();
+      return failure();
     rewriter.eraseOp(loopOp);
-    return matchSuccess();
+    return success();
   }
 };
 

@@ -39,25 +39,25 @@ private:
 // struct ParallelOpOutling final : public OpRewritePattern<acc::ParallelOp> {
 //   using OpRewritePattern<acc::ParallelOp>::OpRewritePattern;
 
-//   PatternMatchResult matchAndRewrite(acc::ParallelOp parallelOp,
-//                                      PatternRewriter &rewriter) const override;
+//   LogicalResult matchAndRewrite(acc::ParallelOp parallelOp,
+//                                 PatternRewriter &rewriter) const override;
 // };
 
 struct ReductionOpLowering final : public OpRewritePattern<acc::ReductionOp> {
   using OpRewritePattern<acc::ReductionOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(acc::ReductionOp reductionOp,
-                                     PatternRewriter &rewriter) const override;
+  LogicalResult matchAndRewrite(acc::ReductionOp reductionOp,
+                                PatternRewriter &rewriter) const override;
 };
 
 template <typename TerminatorOp>
 struct TerminatorOpLowering final : public OpRewritePattern<TerminatorOp> {
   using OpRewritePattern<TerminatorOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TerminatorOp terminatorOp,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(TerminatorOp terminatorOp,
+                                PatternRewriter &rewriter) const override {
     rewriter.eraseOp(terminatorOp);
-    return Pattern::matchSuccess();
+    return success();
   }
 };
 
@@ -114,7 +114,7 @@ static FuncOp outlineParallelRegion(acc::ParallelOp parallelOp,
   return outlinedRegion;
 }
 
-// PatternMatchResult
+// LogicalResult
 // ParallelOpOutling::matchAndRewrite(acc::ParallelOp parallelOp,
 //                                    PatternRewriter &rewriter) const {
 //   auto module = parallelOp.getParentOfType<ModuleOp>();
@@ -132,10 +132,10 @@ static FuncOp outlineParallelRegion(acc::ParallelOp parallelOp,
 //   // inlineBeneficiaryOps(kernelFunc, launchFuncOp);
 
 //   rewriter.eraseOp(parallelOp);
-//   return matchSuccess();
+//   return success();
 // }
 
-PatternMatchResult
+LogicalResult
 ReductionOpLowering::matchAndRewrite(acc::ReductionOp op,
                                      PatternRewriter &rewriter) const {
   Location loc = op.getLoc();
@@ -147,7 +147,7 @@ ReductionOpLowering::matchAndRewrite(acc::ReductionOp op,
   rewriter.replaceOp(op, {gpuAllReduceOp});
   //gpuBarrierOp0.getOperation()->moveBefore(gpuAllReduceOp);
 
-  return matchSuccess();
+  return success();
 }
 
 template <typename OpTy>

@@ -31,10 +31,10 @@ template <typename TerminatorOp>
 struct TerminatorOpLowering final : public OpRewritePattern<TerminatorOp> {
   using OpRewritePattern<TerminatorOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TerminatorOp terminatorOp,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(TerminatorOp terminatorOp,
+                                PatternRewriter &rewriter) const override {
     rewriter.eraseOp(terminatorOp);
-    return Pattern::matchSuccess();
+    return success();
   }
 };
 
