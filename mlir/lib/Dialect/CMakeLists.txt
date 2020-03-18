@@ -6,12 +6,12 @@ add_subdirectory(LLVMIR)
 add_subdirectory(LoopOps)
 add_subdirectory(OpenACC)
 add_subdirectory(OpenMP)
-add_subdirectory(QuantOps)
+add_subdirectory(Quant)
 add_subdirectory(SDBM)
-#add_subdirectory(Shape)
+add_subdirectory(Shape)
 add_subdirectory(SPIRV)
 add_subdirectory(StandardOps)
-add_subdirectory(VectorOps)
+add_subdirectory(Vector)
 
 set(LLVM_OPTIONAL_SOURCES
   Traits.cpp
