@@ -29,7 +29,7 @@ def OpenACC_Dialect : Dialect {
   let cppNamespace = "acc";
 }
 
-// Base class for Loop dialect ops.
+// Base class for OpenACC dialect ops.
 class OpenACC_Op<string mnemonic, list<OpTrait> traits = []> :
   Op<OpenACC_Dialect, mnemonic, traits>;
 

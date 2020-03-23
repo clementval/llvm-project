@@ -13,7 +13,7 @@
 
 #include "mlir/Conversion/OpenACCToGPU/ConvertOpenACCToGPU.h"
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPU.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/OpenACC/OpenACC.h"
