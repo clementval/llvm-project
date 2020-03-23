@@ -14,9 +14,11 @@
 #ifndef MLIR_INITALLDIALECTS_H_
 #define MLIR_INITALLDIALECTS_H_
 
-#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/AVX512/AVX512Dialect.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/FxpMathOps/FxpMathOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMAVX512Dialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
@@ -39,9 +41,11 @@ namespace mlir {
 inline void registerAllDialects() {
   static bool init_once = []() {
     registerDialect<acc::OpenACCDialect>();
-    registerDialect<AffineOpsDialect>();
+    registerDialect<AffineDialect>();
+    registerDialect<avx512::AVX512Dialect>();
     registerDialect<fxpmath::FxpMathOpsDialect>();
     registerDialect<gpu::GPUDialect>();
+    registerDialect<LLVM::LLVMAVX512Dialect>();
     registerDialect<LLVM::LLVMDialect>();
     registerDialect<linalg::LinalgDialect>();
     registerDialect<loop::LoopOpsDialect>();

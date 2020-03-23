@@ -146,6 +146,8 @@ const OMPClauseWithPreInit *OMPClauseWithPreInit::get(const OMPClause *C) {
   case OMPC_order:
   case OMPC_destroy:
   case OMPC_detach:
+  case OMPC_inclusive:
+  case OMPC_exclusive:
     break;
   }
 
@@ -233,6 +235,8 @@ const OMPClauseWithPostUpdate *OMPClauseWithPostUpdate::get(const OMPClause *C) 
   case OMPC_order:
   case OMPC_destroy:
   case OMPC_detach:
+  case OMPC_inclusive:
+  case OMPC_exclusive:
     break;
   }
 
@@ -1248,6 +1252,42 @@ void OMPNontemporalClause::setPrivateRefs(ArrayRef<Expr *> VL) {
   std::copy(VL.begin(), VL.end(), varlist_end());
 }
 
+OMPInclusiveClause *OMPInclusiveClause::Create(const ASTContext &C,
+                                               SourceLocation StartLoc,
+                                               SourceLocation LParenLoc,
+                                               SourceLocation EndLoc,
+                                               ArrayRef<Expr *> VL) {
+  void *Mem = C.Allocate(totalSizeToAlloc<Expr *>(VL.size()));
+  auto *Clause =
+      new (Mem) OMPInclusiveClause(StartLoc, LParenLoc, EndLoc, VL.size());
+  Clause->setVarRefs(VL);
+  return Clause;
+}
+
+OMPInclusiveClause *OMPInclusiveClause::CreateEmpty(const ASTContext &C,
+                                                    unsigned N) {
+  void *Mem = C.Allocate(totalSizeToAlloc<Expr *>(N));
+  return new (Mem) OMPInclusiveClause(N);
+}
+
+OMPExclusiveClause *OMPExclusiveClause::Create(const ASTContext &C,
+                                               SourceLocation StartLoc,
+                                               SourceLocation LParenLoc,
+                                               SourceLocation EndLoc,
+                                               ArrayRef<Expr *> VL) {
+  void *Mem = C.Allocate(totalSizeToAlloc<Expr *>(VL.size()));
+  auto *Clause =
+      new (Mem) OMPExclusiveClause(StartLoc, LParenLoc, EndLoc, VL.size());
+  Clause->setVarRefs(VL);
+  return Clause;
+}
+
+OMPExclusiveClause *OMPExclusiveClause::CreateEmpty(const ASTContext &C,
+                                                    unsigned N) {
+  void *Mem = C.Allocate(totalSizeToAlloc<Expr *>(N));
+  return new (Mem) OMPExclusiveClause(N);
+}
+
 //===----------------------------------------------------------------------===//
 //  OpenMP clauses printing methods
 //===----------------------------------------------------------------------===//
@@ -1433,6 +1473,11 @@ void OMPClausePrinter::VisitOMPSIMDClause(OMPSIMDClause *) { OS << "simd"; }
 
 void OMPClausePrinter::VisitOMPDeviceClause(OMPDeviceClause *Node) {
   OS << "device(";
+  OpenMPDeviceClauseModifier Modifier = Node->getModifier();
+  if (Modifier != OMPC_DEVICE_unknown) {
+    OS << getOpenMPSimpleClauseTypeName(Node->getClauseKind(), Modifier)
+       << ": ";
+  }
   Node->getDevice()->printPretty(OS, nullptr, Policy, 0);
   OS << ")";
 }
@@ -1800,6 +1845,22 @@ void OMPClausePrinter::VisitOMPOrderClause(OMPOrderClause *Node) {
      << ")";
 }
 
+void OMPClausePrinter::VisitOMPInclusiveClause(OMPInclusiveClause *Node) {
+  if (!Node->varlist_empty()) {
+    OS << "inclusive";
+    VisitOMPClauseList(Node, '(');
+    OS << ")";
+  }
+}
+
+void OMPClausePrinter::VisitOMPExclusiveClause(OMPExclusiveClause *Node) {
+  if (!Node->varlist_empty()) {
+    OS << "exclusive";
+    VisitOMPClauseList(Node, '(');
+    OS << ")";
+  }
+}
+
 void OMPTraitInfo::getAsVariantMatchInfo(
     ASTContext &ASTCtx, llvm::omp::VariantMatchInfo &VMI) const {
   for (const OMPTraitSet &Set : Sets) {
@@ -1902,4 +1963,8 @@ llvm::raw_ostream &clang::operator<<(llvm::raw_ostream &OS,
   PrintingPolicy Policy(LO);
   TI.print(OS, Policy);
   return OS;
+}
+llvm::raw_ostream &clang::operator<<(llvm::raw_ostream &OS,
+                                     const OMPTraitInfo *TI) {
+  return TI ? OS << *TI : OS;
 }

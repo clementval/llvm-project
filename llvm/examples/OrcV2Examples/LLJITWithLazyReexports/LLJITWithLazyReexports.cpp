@@ -103,12 +103,12 @@ int main(int argc, char *argv[]) {
   auto J = ExitOnErr(LLJITBuilder().create());
 
   // (2) Install transform to print modules as they are compiled:
-//  J->getIRTransformLayer().setTransform(
-//      [](ThreadSafeModule TSM,
-//         const MaterializationResponsibility &R) -> Expected<ThreadSafeModule> {
-//        TSM.withModuleDo([](Module &M) { dbgs() << "---Compiling---\n" << M; });
-//        return TSM;
-//      });
+  J->getIRTransformLayer().setTransform(
+      [](ThreadSafeModule TSM,
+         const MaterializationResponsibility &R) -> Expected<ThreadSafeModule> {
+        TSM.withModuleDo([](Module &M) { dbgs() << "---Compiling---\n" << M; });
+        return std::move(TSM); // Not a redundant move: fix build on gcc-7.5
+      });
 
   // (3) Create stubs and call-through managers:
   std::unique_ptr<IndirectStubsManager> ISM;
