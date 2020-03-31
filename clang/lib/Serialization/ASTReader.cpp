@@ -6957,6 +6957,9 @@ QualType ASTReader::GetType(TypeID ID) {
     case PREDEF_TYPE_OMP_ARRAY_SECTION:
       T = Context.OMPArraySectionTy;
       break;
+    case PREDEF_TYPE_OMP_ARRAY_SHAPING:
+      T = Context.OMPArraySectionTy;
+      break;
 #define SVE_TYPE(Name, Id, SingletonId) \
     case PREDEF_TYPE_##Id##_ID: \
       T = Context.SingletonId; \
@@ -12093,7 +12096,9 @@ void OMPClauseReader::VisitOMPSharedClause(OMPSharedClause *C) {
 void OMPClauseReader::VisitOMPReductionClause(OMPReductionClause *C) {
   VisitOMPClauseWithPostUpdate(C);
   C->setLParenLoc(Record.readSourceLocation());
+  C->setModifierLoc(Record.readSourceLocation());
   C->setColonLoc(Record.readSourceLocation());
+  C->setModifier(Record.readEnum<OpenMPReductionClauseModifier>());
   NestedNameSpecifierLoc NNSL = Record.readNestedNameSpecifierLoc();
   DeclarationNameInfo DNI = Record.readDeclarationNameInfo();
   C->setQualifierLoc(NNSL);

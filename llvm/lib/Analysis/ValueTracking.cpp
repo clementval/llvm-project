@@ -174,7 +174,13 @@ static bool getShuffleDemandedElts(const ShuffleVectorInst *Shuf,
   int NumElts = Shuf->getOperand(0)->getType()->getVectorNumElements();
   int NumMaskElts = Shuf->getMask()->getType()->getVectorNumElements();
   DemandedLHS = DemandedRHS = APInt::getNullValue(NumElts);
-
+  if (DemandedElts.isNullValue())
+    return true;
+  // Simple case of a shuffle with zeroinitializer.
+  if (isa<ConstantAggregateZero>(Shuf->getMask())) {
+    DemandedLHS.setBit(0);
+    return true;
+  }
   for (int i = 0; i != NumMaskElts; ++i) {
     if (!DemandedElts[i])
       continue;
@@ -4610,9 +4616,22 @@ bool llvm::isGuaranteedNotToBeUndefOrPoison(const Value *V,
   // TODO: Some instructions are guaranteed to return neither undef
   // nor poison if their arguments are not poison/undef.
 
-  // TODO: Deal with other Constant subclasses.
-  if (isa<ConstantInt>(V) || isa<GlobalVariable>(V))
-    return true;
+  if (auto *C = dyn_cast<Constant>(V)) {
+    // TODO: We can analyze ConstExpr by opcode to determine if there is any
+    //       possibility of poison.
+    if (isa<UndefValue>(C) || isa<ConstantExpr>(C))
+      return false;
+
+    // TODO: Add ConstantFP and pointers.
+    if (isa<ConstantInt>(C) || isa<GlobalVariable>(C) )
+      return true;
+
+    if (C->getType()->isVectorTy())
+      return !C->containsUndefElement() && !C->containsConstantExpression();
+
+    // TODO: Recursively analyze aggregates or other constants.
+    return false;
+  }
 
   if (auto PN = dyn_cast<PHINode>(V)) {
     if (llvm::all_of(PN->incoming_values(), [](const Use &U) {

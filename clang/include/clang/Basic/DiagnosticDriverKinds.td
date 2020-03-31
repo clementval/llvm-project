@@ -344,6 +344,8 @@ def err_analyzer_checker_option_unknown : Error<
   "checker '%0' has no option called '%1'">;
 def err_analyzer_checker_option_invalid_input : Error<
   "invalid input for checker option '%0', that expects %1">;
+def err_analyzer_checker_incompatible_analyzer_option : Error<
+  "checker cannot be enabled with analyzer option '%0' == %1">;
 
 def err_drv_invalid_hvx_length : Error<
   "-mhvx-length is not supported without a -mhvx/-mhvx= flag">;
@@ -376,6 +378,9 @@ def err_drv_ropi_incompatible_with_cxx : Error<
 
 def err_stack_tagging_requires_hardware_feature : Error<
   "'-fsanitize=memtag' requires hardware support (+memtag)">;
+
+def err_cmse_pi_are_incompatible : Error<
+  "cmse is not compatible with %select{RWPI|ROPI}0">;
 
 def warn_target_unsupported_nan2008 : Warning<
   "ignoring '-mnan=2008' option because the '%0' architecture does not support it">,

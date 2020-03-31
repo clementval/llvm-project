@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s | FileCheck %s
+// RUN: mlir-opt -allow-unregistered-dialect %s | FileCheck %s
 
 // CHECK-DAG: #map{{[0-9]+}} = affine_map<(d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d4, d3)>
 #map0 = affine_map<(d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d4, d3)>
@@ -1225,3 +1225,9 @@ func @pretty_names() {
   return
 }
 
+// CHECK-LABEL: func @zero_whitespace() {
+// CHECK-NEXT: return
+func @zero_whitespace() {
+     // This is a \0 byte.
+  return
+}
