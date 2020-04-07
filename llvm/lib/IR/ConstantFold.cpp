@@ -124,18 +124,9 @@ static Constant *FoldBitCast(Constant *V, Type *DestTy) {
           Constant::getNullValue(Type::getInt32Ty(DPTy->getContext()));
         IdxList.push_back(Zero);
         Type *ElTy = PTy->getElementType();
-        while (ElTy != DPTy->getElementType()) {
-          if (StructType *STy = dyn_cast<StructType>(ElTy)) {
-            if (STy->getNumElements() == 0) break;
-            ElTy = STy->getElementType(0);
-            IdxList.push_back(Zero);
-          } else if (SequentialType *STy =
-                     dyn_cast<SequentialType>(ElTy)) {
-            ElTy = STy->getElementType();
-            IdxList.push_back(Zero);
-          } else {
-            break;
-          }
+        while (ElTy && ElTy != DPTy->getElementType()) {
+          ElTy = GetElementPtrInst::getTypeAtIndex(ElTy, (uint64_t)0);
+          IdxList.push_back(Zero);
         }
 
         if (ElTy == DPTy->getElementType())
@@ -876,22 +867,22 @@ Constant *llvm::ConstantFoldInsertElementInstruction(Constant *Val,
   return ConstantVector::get(Result);
 }
 
-Constant *llvm::ConstantFoldShuffleVectorInstruction(Constant *V1,
-                                                     Constant *V2,
-                                                     Constant *Mask) {
-  ElementCount MaskEltCount = Mask->getType()->getVectorElementCount();
+Constant *llvm::ConstantFoldShuffleVectorInstruction(Constant *V1, Constant *V2,
+                                                     ArrayRef<int> Mask) {
+  unsigned MaskNumElts = Mask.size();
+  ElementCount MaskEltCount = {MaskNumElts,
+                               V1->getType()->getVectorIsScalable()};
   Type *EltTy = V1->getType()->getVectorElementType();
 
   // Undefined shuffle mask -> undefined value.
-  if (isa<UndefValue>(Mask))
-    return UndefValue::get(VectorType::get(EltTy, MaskEltCount));
-
-  // Don't break the bitcode reader hack.
-  if (isa<ConstantExpr>(Mask)) return nullptr;
+  if (all_of(Mask, [](int Elt) { return Elt == UndefMaskElem; })) {
+    return UndefValue::get(VectorType::get(EltTy, MaskNumElts));
+  }
 
   // If the mask is all zeros this is a splat, no need to go through all
   // elements.
-  if (isa<ConstantAggregateZero>(Mask) && !MaskEltCount.Scalable) {
+  if (all_of(Mask, [](int Elt) { return Elt == 0; }) &&
+      !MaskEltCount.Scalable) {
     Type *Ty = IntegerType::get(V1->getContext(), 32);
     Constant *Elt =
         ConstantExpr::getExtractElement(V1, ConstantInt::get(Ty, 0));
@@ -903,13 +894,12 @@ Constant *llvm::ConstantFoldShuffleVectorInstruction(Constant *V1,
   if (ValTy->isScalable())
     return nullptr;
 
-  unsigned MaskNumElts = MaskEltCount.Min;
   unsigned SrcNumElts = V1->getType()->getVectorNumElements();
 
   // Loop over the shuffle mask, evaluating each element.
   SmallVector<Constant*, 32> Result;
   for (unsigned i = 0; i != MaskNumElts; ++i) {
-    int Elt = ShuffleVectorInst::getMaskValue(Mask, i);
+    int Elt = Mask[i];
     if (Elt == -1) {
       Result.push_back(UndefValue::get(EltTy));
       continue;
@@ -955,7 +945,7 @@ Constant *llvm::ConstantFoldInsertValueInstruction(Constant *Agg,
   if (StructType *ST = dyn_cast<StructType>(Agg->getType()))
     NumElts = ST->getNumElements();
   else
-    NumElts = cast<SequentialType>(Agg->getType())->getNumElements();
+    NumElts = cast<ArrayType>(Agg->getType())->getNumElements();
 
   SmallVector<Constant*, 32> Result;
   for (unsigned i = 0; i != NumElts; ++i) {
@@ -970,9 +960,7 @@ Constant *llvm::ConstantFoldInsertValueInstruction(Constant *Agg,
 
   if (StructType *ST = dyn_cast<StructType>(Agg->getType()))
     return ConstantStruct::get(ST, Result);
-  if (ArrayType *AT = dyn_cast<ArrayType>(Agg->getType()))
-    return ConstantArray::get(AT, Result);
-  return ConstantVector::get(Result);
+  return ConstantArray::get(cast<ArrayType>(Agg->getType()), Result);
 }
 
 Constant *llvm::ConstantFoldUnaryInstruction(unsigned Opcode, Constant *C) {
@@ -2452,12 +2440,12 @@ Constant *llvm::ConstantFoldGetElementPtr(Type *PointeeTy, Constant *C,
       // The verify makes sure that GEPs into a struct are in range.
       continue;
     }
-    auto *STy = cast<SequentialType>(Ty);
-    if (isa<VectorType>(STy)) {
+    if (isa<VectorType>(Ty)) {
       // There can be awkward padding in after a non-power of two vector.
       Unknown = true;
       continue;
     }
+    auto *STy = cast<ArrayType>(Ty);
     if (ConstantInt *CI = dyn_cast<ConstantInt>(Idxs[i])) {
       if (isIndexInRangeOfArrayType(STy->getNumElements(), CI))
         // It's in range, skip to the next index.

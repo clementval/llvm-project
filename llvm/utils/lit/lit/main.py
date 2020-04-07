@@ -20,7 +20,6 @@ import lit.util
 
 def main(builtin_params={}):
     opts = lit.cl_arguments.parse_args()
-
     params = create_params(builtin_params, opts.user_params)
     is_windows = platform.system() == 'Windows'
 
@@ -43,6 +42,10 @@ def main(builtin_params={}):
         sys.stderr.write('error: did not discover any tests for provided path(s)\n')
         sys.exit(2)
 
+    if opts.show_suites or opts.show_tests:
+        print_discovered(discovered_tests, opts.show_suites, opts.show_tests)
+        sys.exit(0)
+
     # Command line overrides configuration for maxIndividualTestTime.
     if opts.maxIndividualTestTime is not None:  # `not None` is important (default: 0)
         if opts.maxIndividualTestTime != lit_config.maxIndividualTestTime:
@@ -54,26 +57,19 @@ def main(builtin_params={}):
                         opts.maxIndividualTestTime))
             lit_config.maxIndividualTestTime = opts.maxIndividualTestTime
 
-    if opts.showSuites or opts.showTests:
-        print_suites_or_tests(discovered_tests, opts)
-        return
-
-    if opts.filter:
-        filtered_tests = [t for t in discovered_tests if
-                          opts.filter.search(t.getFullName())]
-        if not filtered_tests:
-            sys.stderr.write('error: filter did not match any tests '
-                             '(of %d discovered).  ' % len(discovered_tests))
-            if opts.allow_empty_runs:
-                sys.stderr.write('Suppressing error because '
-                                 "'--allow-empty-runs' was specified.\n")
-                sys.exit(0)
-            else:
-                sys.stderr.write("Use '--allow-empty-runs' to suppress this "
-                                 'error.\n')
-                sys.exit(2)
-    else:
-        filtered_tests = discovered_tests
+    filtered_tests = [t for t in discovered_tests if
+                      opts.filter.search(t.getFullName())]
+    if not filtered_tests:
+        sys.stderr.write('error: filter did not match any tests '
+                         '(of %d discovered).  ' % len(discovered_tests))
+        if opts.allow_empty_runs:
+            sys.stderr.write("Suppressing error because '--allow-empty-runs' "
+                             'was specified.\n')
+            sys.exit(0)
+        else:
+            sys.stderr.write("Use '--allow-empty-runs' to suppress this "
+                             'error.\n')
+            sys.exit(2)
 
     determine_order(filtered_tests, opts.order)
 
@@ -123,34 +119,29 @@ def create_params(builtin_params, user_params):
     params.update([parse(p) for p in user_params])
     return params
 
-def print_suites_or_tests(tests, opts):
-    # Aggregate the tests by suite.
-    suitesAndTests = {}
-    for result_test in tests:
-        if result_test.suite not in suitesAndTests:
-            suitesAndTests[result_test.suite] = []
-        suitesAndTests[result_test.suite].append(result_test)
-    suitesAndTests = list(suitesAndTests.items())
-    suitesAndTests.sort(key = lambda item: item[0].name)
 
-    # Show the suites, if requested.
-    if opts.showSuites:
+def print_discovered(tests, show_suites, show_tests):
+    # Suite names are not necessarily unique.  Include object identity in sort
+    # key to avoid mixing tests of different suites.
+    tests.sort(key=lambda t: (t.suite.name, t.suite, t.path_in_suite))
+
+    if show_suites:
+        import itertools
+        tests_by_suite = itertools.groupby(tests, lambda t: t.suite)
         print('-- Test Suites --')
-        for ts,ts_tests in suitesAndTests:
-            print('  %s - %d tests' %(ts.name, len(ts_tests)))
-            print('    Source Root: %s' % ts.source_root)
-            print('    Exec Root  : %s' % ts.exec_root)
-            if ts.config.available_features:
-                print('    Available Features : %s' % ' '.join(
-                    sorted(ts.config.available_features)))
+        for suite, suite_iter in tests_by_suite:
+            test_count = sum(1 for _ in suite_iter)
+            print('  %s - %d tests' % (suite.name, test_count))
+            print('    Source Root: %s' % suite.source_root)
+            print('    Exec Root  : %s' % suite.exec_root)
+            if suite.config.available_features:
+                features = ' '.join(sorted(suite.config.available_features))
+                print('    Available Features : %s' % features)
 
-    # Show the tests, if requested.
-    if opts.showTests:
+    if show_tests:
         print('-- Available Tests --')
-        for ts,ts_tests in suitesAndTests:
-            ts_tests.sort(key = lambda test: test.path_in_suite)
-            for test in ts_tests:
-                print('  %s' % (test.getFullName(),))
+        for t in tests:
+            print('  %s' % t.getFullName())
 
 
 def determine_order(tests, order):
@@ -190,8 +181,8 @@ def filter_by_shard(tests, run, shards, lit_config):
     return selected_tests
 
 
-def run_tests(tests, lit_config, opts, numTotalTests):
-    display = lit.display.create_display(opts, len(tests), numTotalTests,
+def run_tests(tests, lit_config, opts, discovered_tests):
+    display = lit.display.create_display(opts, len(tests), discovered_tests,
                                          opts.workers)
     def progress_callback(test):
         display.update(test)
@@ -202,12 +193,22 @@ def run_tests(tests, lit_config, opts, numTotalTests):
                       opts.max_failures, opts.timeout)
 
     display.print_header()
+
+    interrupted = False
+    error = None
     try:
         execute_in_tmp_dir(run, lit_config)
-        display.clear(interrupted=False)
     except KeyboardInterrupt:
-        display.clear(interrupted=True)
-        print(' [interrupted by user]')
+        interrupted = True
+        error = '  interrupted by user'
+    except lit.run.MaxFailuresError:
+        error = 'warning: reached maximum number of test failures'
+    except lit.run.TimeoutError:
+        error = 'warning: reached timeout'
+
+    display.clear(interrupted)
+    if error:
+        sys.stderr.write('%s, skipping remaining tests\n' % error)
 
 
 def execute_in_tmp_dir(run, lit_config):
@@ -226,10 +227,6 @@ def execute_in_tmp_dir(run, lit_config):
                 'TEMP': tmp_dir,
                 'TEMPDIR': tmp_dir,
                 })
-    # FIXME: If Python does not exit cleanly, this directory will not be cleaned
-    # up. We should consider writing the lit pid into the temp directory,
-    # scanning for stale temp directories, and deleting temp directories whose
-    # lit process has died.
     try:
         run.execute()
     finally:

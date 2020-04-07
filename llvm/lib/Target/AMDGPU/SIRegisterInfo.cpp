@@ -40,10 +40,23 @@ static cl::opt<bool> EnableSpillSGPRToVGPR(
 
 SIRegisterInfo::SIRegisterInfo(const GCNSubtarget &ST)
     : AMDGPUGenRegisterInfo(AMDGPU::PC_REG, ST.getAMDGPUDwarfFlavour()), ST(ST),
-      SpillSGPRToVGPR(EnableSpillSGPRToVGPR), isWave32(ST.isWave32()) {}
+      SpillSGPRToVGPR(EnableSpillSGPRToVGPR), isWave32(ST.isWave32()) {
+
+  assert(getSubRegIndexLaneMask(AMDGPU::sub0).getAsInteger() == 3 &&
+         getSubRegIndexLaneMask(AMDGPU::sub31).getAsInteger() == (3ULL << 62) &&
+         (getSubRegIndexLaneMask(AMDGPU::lo16) |
+          getSubRegIndexLaneMask(AMDGPU::hi16)).getAsInteger() ==
+           getSubRegIndexLaneMask(AMDGPU::sub0).getAsInteger() &&
+         "getNumCoveredRegs() will not work with generated subreg masks!");
+
+  RegPressureIgnoredUnits.resize(getNumRegUnits());
+  RegPressureIgnoredUnits.set(*MCRegUnitIterator(AMDGPU::M0, this));
+  for (auto Reg : AMDGPU::VGPR_HI16RegClass)
+    RegPressureIgnoredUnits.set(*MCRegUnitIterator(Reg, this));
+}
 
 void SIRegisterInfo::reserveRegisterTuples(BitVector &Reserved,
-                                           unsigned Reg) const {
+                                           MCRegister Reg) const {
   MCRegAliasIterator R(Reg, this, true);
 
   for (; R.isValid(); ++R)
@@ -174,10 +187,10 @@ unsigned SIRegisterInfo::getSubRegFromChannel(unsigned Channel,
   return SubRegFromChannelTable[NumRegIndex][Channel];
 }
 
-unsigned SIRegisterInfo::reservedPrivateSegmentBufferReg(
+MCRegister SIRegisterInfo::reservedPrivateSegmentBufferReg(
   const MachineFunction &MF) const {
   unsigned BaseIdx = alignDown(ST.getMaxNumSGPRs(MF), 4) - 4;
-  unsigned BaseReg(AMDGPU::SGPR_32RegClass.getRegister(BaseIdx));
+  MCRegister BaseReg(AMDGPU::SGPR_32RegClass.getRegister(BaseIdx));
   return getMatchingSuperReg(BaseReg, AMDGPU::sub0, &AMDGPU::SGPR_128RegClass);
 }
 
@@ -271,20 +284,20 @@ BitVector SIRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   // We have to assume the SP is needed in case there are calls in the function,
   // which is detected after the function is lowered. If we aren't really going
   // to need SP, don't bother reserving it.
-  unsigned StackPtrReg = MFI->getStackPtrOffsetReg();
+  MCRegister StackPtrReg = MFI->getStackPtrOffsetReg();
 
-  if (StackPtrReg != AMDGPU::NoRegister) {
+  if (StackPtrReg) {
     reserveRegisterTuples(Reserved, StackPtrReg);
     assert(!isSubRegister(ScratchRSrcReg, StackPtrReg));
   }
 
-  unsigned FrameReg = MFI->getFrameOffsetReg();
-  if (FrameReg != AMDGPU::NoRegister) {
+  MCRegister FrameReg = MFI->getFrameOffsetReg();
+  if (FrameReg) {
     reserveRegisterTuples(Reserved, FrameReg);
     assert(!isSubRegister(ScratchRSrcReg, FrameReg));
   }
 
-  for (unsigned Reg : MFI->WWMReservedRegs) {
+  for (MCRegister Reg : MFI->WWMReservedRegs) {
     reserveRegisterTuples(Reserved, Reg);
   }
 
@@ -647,10 +660,10 @@ static bool buildMUBUFOffsetLoadStore(const GCNSubtarget &ST,
 void SIRegisterInfo::buildSpillLoadStore(MachineBasicBlock::iterator MI,
                                          unsigned LoadStoreOp,
                                          int Index,
-                                         unsigned ValueReg,
+                                         Register ValueReg,
                                          bool IsKill,
-                                         unsigned ScratchRsrcReg,
-                                         unsigned ScratchOffsetReg,
+                                         MCRegister ScratchRsrcReg,
+                                         MCRegister ScratchOffsetReg,
                                          int64_t InstOffset,
                                          MachineMemOperand *MMO,
                                          RegScavenger *RS) const {
@@ -664,7 +677,7 @@ void SIRegisterInfo::buildSpillLoadStore(MachineBasicBlock::iterator MI,
   bool IsStore = Desc.mayStore();
 
   bool Scavenged = false;
-  unsigned SOffset = ScratchOffsetReg;
+  MCRegister SOffset = ScratchOffsetReg;
 
   const unsigned EltSize = 4;
   const TargetRegisterClass *RC = getRegClassForReg(MF->getRegInfo(), ValueReg);
@@ -683,7 +696,7 @@ void SIRegisterInfo::buildSpillLoadStore(MachineBasicBlock::iterator MI,
   assert((Offset % EltSize) == 0 && "unexpected VGPR spill offset");
 
   if (!isUInt<12>(Offset + Size - EltSize)) {
-    SOffset = AMDGPU::NoRegister;
+    SOffset = MCRegister();
 
     // We currently only support spilling VGPRs to EltSize boundaries, meaning
     // we can simplify the adjustment of Offset here to just scale with
@@ -695,8 +708,8 @@ void SIRegisterInfo::buildSpillLoadStore(MachineBasicBlock::iterator MI,
     if (RS)
       SOffset = RS->scavengeRegister(&AMDGPU::SGPR_32RegClass, MI, 0, false);
 
-    if (SOffset == AMDGPU::NoRegister) {
-      if (ScratchOffsetReg == AMDGPU::NoRegister) {
+    if (!SOffset) {
+      if (!ScratchOffsetReg) {
         report_fatal_error("could not scavenge SGPR to spill in entry function");
       }
       // There are no free SGPRs, and since we are in the process of spilling
@@ -1263,9 +1276,8 @@ StringRef SIRegisterInfo::getRegAsmName(unsigned Reg) const {
 
 // FIXME: This is very slow. It might be worth creating a map from physreg to
 // register class.
-const TargetRegisterClass *SIRegisterInfo::getPhysRegClass(unsigned Reg) const {
-  assert(!Register::isVirtualRegister(Reg));
-
+const TargetRegisterClass *
+SIRegisterInfo::getPhysRegClass(MCRegister Reg) const {
   static const TargetRegisterClass *const BaseClasses[] = {
     &AMDGPU::VGPR_32RegClass,
     &AMDGPU::SReg_32RegClass,
@@ -1523,15 +1535,15 @@ bool SIRegisterInfo::shouldRewriteCopySrc(
 /// Returns a register that is not used at any point in the function.
 ///        If all registers are used, then this function will return
 //         AMDGPU::NoRegister.
-unsigned
+MCRegister
 SIRegisterInfo::findUnusedRegister(const MachineRegisterInfo &MRI,
                                    const TargetRegisterClass *RC,
                                    const MachineFunction &MF) const {
 
-  for (unsigned Reg : *RC)
+  for (MCRegister Reg : *RC)
     if (MRI.isAllocatable(Reg) && !MRI.isPhysRegUsed(Reg))
       return Reg;
-  return AMDGPU::NoRegister;
+  return MCRegister();
 }
 
 ArrayRef<int16_t> SIRegisterInfo::getRegSplitParts(const TargetRegisterClass *RC,
@@ -1725,23 +1737,20 @@ ArrayRef<int16_t> SIRegisterInfo::getRegSplitParts(const TargetRegisterClass *RC
 
 const TargetRegisterClass*
 SIRegisterInfo::getRegClassForReg(const MachineRegisterInfo &MRI,
-                                  unsigned Reg) const {
-  if (Register::isVirtualRegister(Reg))
-    return  MRI.getRegClass(Reg);
-
-  return getPhysRegClass(Reg);
+                                  Register Reg) const {
+  return Reg.isVirtual() ? MRI.getRegClass(Reg) : getPhysRegClass(Reg);
 }
 
 bool SIRegisterInfo::isVGPR(const MachineRegisterInfo &MRI,
-                            unsigned Reg) const {
-  const TargetRegisterClass * RC = getRegClassForReg(MRI, Reg);
+                            Register Reg) const {
+  const TargetRegisterClass *RC = getRegClassForReg(MRI, Reg);
   assert(RC && "Register class for the reg not found");
   return hasVGPRs(RC);
 }
 
 bool SIRegisterInfo::isAGPR(const MachineRegisterInfo &MRI,
-                            unsigned Reg) const {
-  const TargetRegisterClass * RC = getRegClassForReg(MRI, Reg);
+                            Register Reg) const {
+  const TargetRegisterClass *RC = getRegClassForReg(MRI, Reg);
   assert(RC && "Register class for the reg not found");
   return hasAGPRs(RC);
 }
@@ -1777,6 +1786,8 @@ unsigned SIRegisterInfo::getRegPressureLimit(const TargetRegisterClass *RC,
   default:
     return AMDGPUGenRegisterInfo::getRegPressureLimit(RC, MF);
   case AMDGPU::VGPR_32RegClassID:
+  case AMDGPU::VGPR_LO16RegClassID:
+  case AMDGPU::VGPR_HI16RegClassID:
     return std::min(ST.getMaxNumVGPRs(Occupancy), ST.getMaxNumVGPRs(MF));
   case AMDGPU::SGPR_32RegClassID:
     return std::min(ST.getMaxNumSGPRs(Occupancy, true), ST.getMaxNumSGPRs(MF));
@@ -1800,12 +1811,13 @@ unsigned SIRegisterInfo::getRegPressureSetLimit(const MachineFunction &MF,
 const int *SIRegisterInfo::getRegUnitPressureSets(unsigned RegUnit) const {
   static const int Empty[] = { -1 };
 
-  if (hasRegUnit(AMDGPU::M0, RegUnit))
+  if (RegPressureIgnoredUnits[RegUnit])
     return Empty;
+
   return AMDGPUGenRegisterInfo::getRegUnitPressureSets(RegUnit);
 }
 
-unsigned SIRegisterInfo::getReturnAddressReg(const MachineFunction &MF) const {
+MCRegister SIRegisterInfo::getReturnAddressReg(const MachineFunction &MF) const {
   // Not a callee saved register.
   return AMDGPU::SGPR30_SGPR31;
 }
@@ -1871,7 +1883,7 @@ SIRegisterInfo::getConstrainedRegClassForOperand(const MachineOperand &MO,
   return getAllocatableClass(RC);
 }
 
-unsigned SIRegisterInfo::getVCC() const {
+MCRegister SIRegisterInfo::getVCC() const {
   return isWave32 ? AMDGPU::VCC_LO : AMDGPU::VCC;
 }
 
@@ -1891,7 +1903,7 @@ SIRegisterInfo::getRegClass(unsigned RCID) const {
 }
 
 // Find reaching register definition
-MachineInstr *SIRegisterInfo::findReachingDef(unsigned Reg, unsigned SubReg,
+MachineInstr *SIRegisterInfo::findReachingDef(Register Reg, unsigned SubReg,
                                               MachineInstr &Use,
                                               MachineRegisterInfo &MRI,
                                               LiveIntervals *LIS) const {
@@ -1899,7 +1911,7 @@ MachineInstr *SIRegisterInfo::findReachingDef(unsigned Reg, unsigned SubReg,
   SlotIndex UseIdx = LIS->getInstructionIndex(Use);
   SlotIndex DefIdx;
 
-  if (Register::isVirtualRegister(Reg)) {
+  if (Reg.isVirtual()) {
     if (!LIS->hasInterval(Reg))
       return nullptr;
     LiveInterval &LI = LIS->getInterval(Reg);

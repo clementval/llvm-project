@@ -6,6 +6,7 @@
 #
 #===----------------------------------------------------------------------===##
 
+import copy
 import locale
 import os
 import platform
@@ -149,6 +150,8 @@ class Configuration(object):
         self.configure_coverage()
         self.configure_modules()
         self.configure_coroutines()
+        self.configure_blocks()
+        self.configure_objc_arc()
         self.configure_substitutions()
         self.configure_features()
 
@@ -822,6 +825,7 @@ class Configuration(object):
                     if cxxabi_library_root:
                         libname = self.make_static_lib_name('c++abi')
                         abs_path = os.path.join(cxxabi_library_root, libname)
+                        self.cxx.link_libcxxabi_flag = abs_path
                         self.cxx.link_flags += [abs_path]
                     else:
                         self.cxx.link_flags += ['-lc++abi']
@@ -986,6 +990,16 @@ class Configuration(object):
             if intMacroValue(macros['__cpp_coroutines']) >= 201703:
                 self.config.available_features.add('fcoroutines-ts')
 
+    def configure_blocks(self):
+        if self.cxx.hasCompileFlag('-fblocks'):
+            self.config.available_features.add('has-fblocks')
+
+    def configure_objc_arc(self):
+        cxx = copy.deepcopy(self.cxx)
+        cxx.source_lang = 'objective-c++'
+        if cxx.hasCompileFlag('-fobjc-arc'):
+            self.config.available_features.add('has-fobjc-arc')
+
     def configure_modules(self):
         modules_flags = ['-fmodules']
         if not self.target_info.is_darwin():
@@ -1025,6 +1039,7 @@ class Configuration(object):
         sub.append(('%{flags}',         ' '.join(map(pipes.quote, self.cxx.flags))))
         sub.append(('%{compile_flags}', ' '.join(map(pipes.quote, self.cxx.compile_flags))))
         sub.append(('%{link_flags}',    ' '.join(map(pipes.quote, self.cxx.link_flags))))
+        sub.append(('%{link_libcxxabi}', pipes.quote(self.cxx.link_libcxxabi_flag)))
         if self.cxx.isVerifySupported():
             sub.append(('%{verify}', ' '.join(self.cxx.verify_flags)))
         # Add compile and build shortcuts
@@ -1038,13 +1053,20 @@ class Configuration(object):
         # Configure exec prefix substitutions.
         # Configure run env substitution.
         codesign_ident = self.get_lit_conf('llvm_codesign_identity', '')
-        run_py = os.path.join(self.libcxx_src_root, 'utils', 'run.py')
         env_vars = ' '.join('%s=%s' % (k, pipes.quote(v)) for (k, v) in self.exec_env.items())
-        exec_str = '%s %s --codesign_identity "%s" --working_directory "%%S" ' \
-                   '--dependencies %%{file_dependencies} --env %s -- ' %  \
-            (pipes.quote(sys.executable), pipes.quote(run_py),
-             codesign_ident, env_vars)
-        sub.append(('%{exec}', exec_str))
+        exec_args = [
+            '--codesign_identity "{}"'.format(codesign_ident),
+            '--dependencies %{file_dependencies}',
+            '--env {}'.format(env_vars)
+        ]
+        if isinstance(self.executor, SSHExecutor):
+            exec_args.append('--host {}'.format(self.executor.user_prefix + self.executor.host))
+            executor = os.path.join(self.libcxx_src_root, 'utils', 'ssh.py')
+        else:
+            executor = os.path.join(self.libcxx_src_root, 'utils', 'run.py')
+        sub.append(('%{exec}', '{} {} {} -- '.format(pipes.quote(sys.executable),
+                                                     pipes.quote(executor),
+                                                     ' '.join(exec_args))))
         sub.append(('%{run}', '%{exec} %t.exe'))
         # Configure not program substitutions
         not_py = os.path.join(self.libcxx_src_root, 'utils', 'not.py')
@@ -1163,6 +1185,7 @@ class Configuration(object):
 
     def configure_env(self):
         self.target_info.configure_env(self.exec_env)
+        self.config.environment = dict(os.environ)
 
     def add_path(self, dest_env, new_path):
         self.target_info.add_path(dest_env, new_path)

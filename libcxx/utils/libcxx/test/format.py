@@ -9,6 +9,8 @@
 import copy
 import errno
 import os
+import shutil
+import tempfile
 import time
 import random
 
@@ -18,6 +20,7 @@ from lit.TestRunner import ParserKind, IntegratedTestKeywordParser  \
     # pylint: disable=import-error
 
 from libcxx.test.executor import LocalExecutor as LocalExecutor
+from libcxx.test.executor import SSHExecutor as SSHExecutor
 import libcxx.util
 
 
@@ -112,8 +115,6 @@ class LibcxxTestFormat(object):
         script = lit.TestRunner.parseIntegratedTestScript(
             test, additional_parsers=parsers, require_script=is_sh_test)
 
-        local_cwd = os.path.dirname(test.getSourcePath())
-        data_files = [os.path.join(local_cwd, f) for f in test.file_dependencies]
         # Check if a result for the test was returned. If so return that
         # result.
         if isinstance(script, lit.Test.Result):
@@ -126,11 +127,18 @@ class LibcxxTestFormat(object):
             lit_config.fatal('Unsupported RUN line found in test %s' % name)
 
         tmpDir, tmpBase = lit.TestRunner.getTempPaths(test)
-        substitutions = lit.TestRunner.getDefaultSubstitutions(test, tmpDir,
-                                                               tmpBase)
+        substitutions = lit.TestRunner.getDefaultSubstitutions(
+            test, tmpDir, tmpBase, normalize_slashes=self.execute_external)
+
+        # Apply substitutions in FILE_DEPENDENCIES markup
+        data_files = lit.TestRunner.applySubstitutions(test.file_dependencies, substitutions,
+                                                       recursion_limit=test.config.recursiveExpansionLimit)
+        local_cwd = os.path.dirname(test.getSourcePath())
+        data_files = [f if os.path.isabs(f) else os.path.join(local_cwd, f) for f in data_files]
         substitutions.append(('%{file_dependencies}', ' '.join(data_files)))
+
         script = lit.TestRunner.applySubstitutions(script, substitutions,
-                                                   recursion_limit=10)
+                                                   recursion_limit=test.config.recursiveExpansionLimit)
 
         test_cxx = copy.deepcopy(self.cxx)
         if is_fail_test:
@@ -163,8 +171,9 @@ class LibcxxTestFormat(object):
 
         # Dispatch the test based on its suffix.
         if is_sh_test:
-            if not isinstance(self.executor, LocalExecutor):
-                # We can't run ShTest tests with a executor yet.
+            if not isinstance(self.executor, LocalExecutor) and not isinstance(self.executor, SSHExecutor):
+                # We can't run ShTest tests with other executors than
+                # LocalExecutor and SSHExecutor yet.
                 # For now, bail on trying to run them
                 return lit.Test.UNSUPPORTED, 'ShTest format not yet supported'
             test.config.environment = self.executor.merge_environments(os.environ, self.exec_env)
@@ -202,16 +211,21 @@ class LibcxxTestFormat(object):
                 report += "Compilation failed unexpectedly!"
                 return lit.Test.Result(lit.Test.FAIL, report)
             # Run the test
-            local_cwd = os.path.dirname(source_path)
             env = None
             if self.exec_env:
                 env = self.exec_env
 
             max_retry = test.allowed_retries + 1
             for retry_count in range(max_retry):
-                cmd, out, err, rc = self.executor.run(exec_path, [exec_path],
-                                                      local_cwd, data_files,
-                                                      env)
+                # Create a temporary directory just for that test and run the
+                # test in that directory
+                try:
+                    execDirTmp = tempfile.mkdtemp(dir=execDir)
+                    cmd, out, err, rc = self.executor.run(exec_path, [exec_path],
+                                                          execDirTmp, data_files,
+                                                          env)
+                finally:
+                    shutil.rmtree(execDirTmp)
                 report = "Compiled With: '%s'\n" % ' '.join(compile_cmd)
                 report += libcxx.util.makeReport(cmd, out, err, rc)
                 if rc == 0:
@@ -238,12 +252,7 @@ class LibcxxTestFormat(object):
                        b'expected-no-diagnostics']
         use_verify = self.use_verify_for_fail and \
                      any([tag in contents for tag in verify_tags])
-        # FIXME(EricWF): GCC 5 does not evaluate static assertions that
-        # are dependant on a template parameter when '-fsyntax-only' is passed.
-        # This is fixed in GCC 6. However for now we only pass "-fsyntax-only"
-        # when using Clang.
-        if test_cxx.type != 'gcc':
-            test_cxx.flags += ['-fsyntax-only']
+        test_cxx.flags += ['-fsyntax-only']
         if use_verify:
             test_cxx.useVerify()
         cmd, out, err, rc = test_cxx.compile(source_path, out=os.devnull)

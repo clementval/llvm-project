@@ -22,6 +22,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Analysis/AssumeBundleQueries.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/Loads.h"
@@ -48,7 +49,6 @@
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/IntrinsicsPowerPC.h"
-#include "llvm/IR/KnowledgeRetention.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/PatternMatch.h"
@@ -2316,6 +2316,22 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
       }
     }
 
+    Value *ExtSrc0;
+    Value *ExtSrc1;
+
+    // minnum (fpext x), (fpext y) -> minnum x, y
+    // maxnum (fpext x), (fpext y) -> maxnum x, y
+    if (match(II->getArgOperand(0), m_OneUse(m_FPExt(m_Value(ExtSrc0)))) &&
+        match(II->getArgOperand(1), m_OneUse(m_FPExt(m_Value(ExtSrc1)))) &&
+        ExtSrc0->getType() == ExtSrc1->getType()) {
+      Value *F = Intrinsic::getDeclaration(II->getModule(), II->getIntrinsicID(),
+                                           { ExtSrc0->getType() });
+      CallInst *NewCall = Builder.CreateCall(F, { ExtSrc0, ExtSrc1 });
+      NewCall->copyFastMathFlags(II);
+      NewCall->takeName(II);
+      return new FPExtInst(NewCall, II->getType());
+    }
+
     break;
   }
   case Intrinsic::fmuladd: {
@@ -4441,7 +4457,8 @@ static void annotateAnyAllocSite(CallBase &Call, const TargetLibraryInfo *TLI) {
   ConstantInt *Op0C = dyn_cast<ConstantInt>(Call.getOperand(0));
   ConstantInt *Op1C =
       (NumArgs == 1) ? nullptr : dyn_cast<ConstantInt>(Call.getOperand(1));
-  // Bail out if the allocation size is zero.
+  // Bail out if the allocation size is zero (or an invalid alignment of zero
+  // with aligned_alloc).
   if ((Op0C && Op0C->isNullValue()) || (Op1C && Op1C->isNullValue()))
     return;
 
@@ -4454,6 +4471,18 @@ static void annotateAnyAllocSite(CallBase &Call, const TargetLibraryInfo *TLI) {
       Call.addAttribute(AttributeList::ReturnIndex,
                         Attribute::getWithDereferenceableOrNullBytes(
                             Call.getContext(), Op0C->getZExtValue()));
+  } else if (isAlignedAllocLikeFn(&Call, TLI) && Op1C) {
+    Call.addAttribute(AttributeList::ReturnIndex,
+                      Attribute::getWithDereferenceableOrNullBytes(
+                          Call.getContext(), Op1C->getZExtValue()));
+    // Add alignment attribute if alignment is a power of two constant.
+    if (Op0C) {
+      uint64_t AlignmentVal = Op0C->getZExtValue();
+      if (llvm::isPowerOf2_64(AlignmentVal))
+        Call.addAttribute(AttributeList::ReturnIndex,
+                          Attribute::getWithAlignment(Call.getContext(),
+                                                      Align(AlignmentVal)));
+    }
   } else if (isReallocLikeFn(&Call, TLI) && Op1C) {
     Call.addAttribute(AttributeList::ReturnIndex,
                       Attribute::getWithDereferenceableOrNullBytes(
