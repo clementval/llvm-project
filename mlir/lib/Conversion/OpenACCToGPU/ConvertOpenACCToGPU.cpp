@@ -11,7 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Conversion/OpenACCToGPU/ConvertOpenACCToGPU.h"
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPU.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
@@ -24,6 +23,8 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/RegionUtils.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SetVector.h"
 
 using namespace mlir;
@@ -690,9 +691,6 @@ void OpenACCToGPULoweringPass::runOnModule() {
   //   signalPassFailure();
 }
 
-std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertOpenACCToGPUPass() {
+std::unique_ptr<Pass> mlir::createConvertOpenACCToGPUPass() {
   return std::make_unique<OpenACCToGPULoweringPass>();
 }
-
-static PassRegistration<OpenACCToGPULoweringPass>
-    pass("convert-openacc-to-gpu", "Convert OpenACC to GPU dialect");

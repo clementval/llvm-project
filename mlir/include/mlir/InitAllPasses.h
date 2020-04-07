@@ -24,8 +24,6 @@
 #include "mlir/Conversion/LinalgToSPIRV/LinalgToSPIRVPass.h"
 #include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"
-#include "mlir/Conversion/OpenACCToStandard/ConvertOpenACCToStandard.h"
-#include "mlir/Conversion/OpenACCToGPU/ConvertOpenACCToGPU.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
@@ -37,6 +35,7 @@
 #include "mlir/Dialect/LoopOps/Passes.h"
 #include "mlir/Dialect/Quant/Passes.h"
 #include "mlir/Dialect/SPIRV/Passes.h"
+#include "mlir/Dialect/OpenACC/Passes.h"
 #include "mlir/Quantizer/Transforms/Passes.h"
 #include "mlir/Transforms/LocationSnapshot.h"
 #include "mlir/Transforms/Passes.h"
@@ -80,8 +79,8 @@ inline void registerAllPasses() {
 #include "mlir/Dialect/Linalg/Passes.h.inc"
 
   // OpenACC
-  createConvertOpenACCToGPUPass();
-  createConvertOpenACCToSeqPass();
+#define GEN_PASS_REGISTRATION
+#include "mlir/Dialect/OpenACC/Passes.h.inc"  
 
   // LLVM
 #define GEN_PASS_REGISTRATION

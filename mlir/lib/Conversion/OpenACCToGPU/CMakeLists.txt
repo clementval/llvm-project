@@ -3,7 +3,10 @@ add_mlir_conversion_library(MLIROpenACCToGPU
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/OpenACCToGPU
-)
+
+  DEPENDS
+  MLIROpenACCPassIncGen
+  )
 add_dependencies(
   MLIROpenACCToGPU
 
@@ -11,7 +14,7 @@ add_dependencies(
   MLIRTransforms
   LLVMCore
   LLVMSupport
-)
+  )
 target_link_libraries(
   MLIROpenACCToGPU
 
@@ -19,4 +22,4 @@ target_link_libraries(
   MLIRTransforms
   LLVMCore
   LLVMSupport
-)
+  )

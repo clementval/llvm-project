@@ -11,13 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Conversion/OpenACCToStandard/ConvertOpenACCToStandard.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/OpenACC/OpenACC.h"
 #include "mlir/Dialect/OpenACC/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Module.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/IR/PatternMatch.h"
 
 using namespace mlir;
@@ -88,11 +89,6 @@ void OpenACCToSeqConversionPass::runOnModule() {
     signalPassFailure();
 }
 
-std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertOpenACCToSeqPass() {
+std::unique_ptr<Pass> mlir::createConvertOpenACCToStandardPass() {
   return std::make_unique<OpenACCToSeqConversionPass>();
 }
-
-
-static PassRegistration<OpenACCToSeqConversionPass>
-    pass("convert-openacc-to-standard", 
-    "Convert OpenACC to standard sequential execution");

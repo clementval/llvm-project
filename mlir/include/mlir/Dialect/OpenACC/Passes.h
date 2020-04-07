@@ -13,10 +13,14 @@
 #ifndef MLIR_DIALECT_OPENACC_PASSES_H
 #define MLIR_DIALECT_OPENACC_PASSES_H
 
-#include "mlir/Pass/Pass.h"
-
 namespace mlir {
-std::unique_ptr<OpPassBase<mlir::ModuleOp>> createConvertOpenACCToGPUPass();
+
+class Pass;
+
+std::unique_ptr<Pass> createConvertOpenACCToGPUPass();
+
+std::unique_ptr<Pass> createConvertOpenACCToStandardPass();
+
 } // namespace mlir
 
 #endif // MLIR_DIALECT_OPENACC_PASSES_H
