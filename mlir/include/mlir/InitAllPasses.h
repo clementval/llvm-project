@@ -35,7 +35,6 @@
 #include "mlir/Dialect/Quant/Passes.h"
 #include "mlir/Dialect/SPIRV/Passes.h"
 #include "mlir/Dialect/OpenACC/Passes.h"
-#include "mlir/Quantizer/Transforms/Passes.h"
 #include "mlir/Transforms/LocationSnapshot.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/ViewOpGraph.h"

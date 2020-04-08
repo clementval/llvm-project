@@ -12,20 +12,27 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/OpenACC/OpenACC.h"
 #include "mlir/Dialect/OpenACC/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Module.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/Passes.h"
 
 using namespace mlir;
 
-struct OpenACCToSeqConversionPass
-    : public ModulePass<OpenACCToSeqConversionPass> {
-  void runOnModule() override;
+#include "mlir/Pass/Pass.h"
+#define GEN_PASS_CLASSES
+#include "mlir/Dialect/OpenACC/Passes.h.inc"
+
+
+
+struct OpenACCToStandardPass 
+    : public OpenACCToStandardBase<OpenACCToStandardPass> {
+
+  void runOnOperation() override;
 };
 
 template <typename TerminatorOp>
@@ -71,7 +78,7 @@ static void convertToSequential(ModuleOp m) {
   });
 }
 
-void OpenACCToSeqConversionPass::runOnModule() {
+void OpenACCToStandardPass::runOnOperation() {
 
   ConversionTarget target(getContext());
   target.addIllegalDialect<acc::OpenACCDialect>();
@@ -82,13 +89,14 @@ void OpenACCToSeqConversionPass::runOnModule() {
   patterns.insert<TerminatorOpLowering<acc::ParallelEndOp>>(&getContext());
   patterns.insert<TerminatorOpLowering<acc::YieldOp>>(&getContext());
 
-  auto m = getModule();
+  ModuleOp m = getOperation();
   convertToSequential(m);
 
   if (failed(applyPartialConversion(m, target, patterns)))
     signalPassFailure();
 }
 
-std::unique_ptr<Pass> mlir::createConvertOpenACCToStandardPass() {
-  return std::make_unique<OpenACCToSeqConversionPass>();
+std::unique_ptr<OperationPass<ModuleOp>> 
+    mlir::createConvertOpenACCToStandardPass() {
+  return std::make_unique<OpenACCToStandardPass>();
 }

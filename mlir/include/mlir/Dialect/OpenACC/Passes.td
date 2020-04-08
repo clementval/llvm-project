@@ -6,19 +6,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_DIALECT_LOOP_PASSES
-#define MLIR_DIALECT_LOOP_PASSES
+#ifndef MLIR_DIALECT_OPENACC_PASSES
+#define MLIR_DIALECT_OPENACC_PASSES
 
 include "mlir/Pass/PassBase.td"
 
-def OpenACCToStandard : Pass<"convert-openacc-to-gpu"> {
+def OpenACCToStandard : Pass<"convert-openacc-to-gpu", "mlir::ModuleOp"> {
   let summary = "OpenACC to GPU";
   let constructor = "mlir::createConvertOpenACCToGPUPass()";
 }
 
-def OpenACCToGpu : Pass<"convert-openacc-to-standard"> {
+def OpenACCToGPU : Pass<"convert-openacc-to-standard", "mlir::ModuleOp"> {
   let summary = "OpenACC to Standard";
   let constructor = "mlir::createConvertOpenACCToStandardPass()";
 }
 
-#endif // MLIR_DIALECT_LOOP_PASSES
+#endif // MLIR_DIALECT_OPENACC_PASSES

@@ -17,6 +17,7 @@
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/OpenACC/OpenACC.h"
 #include "mlir/Dialect/OpenACC/Passes.h"
+
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Module.h"
@@ -24,13 +25,19 @@
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SetVector.h"
 
 using namespace mlir;
 
-struct OpenACCToGPULoweringPass : public ModulePass<OpenACCToGPULoweringPass> {
-  void runOnModule() override;
+#include "mlir/Pass/Pass.h"
+#define GEN_PASS_CLASSES
+#include "mlir/Dialect/OpenACC/Passes.h.inc"
+
+
+
+struct OpenACCToGPUPass : public OpenACCToGPUBase<OpenACCToGPUPass> {
+
+  void runOnOperation() override;
 
 private:
   gpu::GPUModuleOp createKernelModule(gpu::GPUFuncOp kernelFunc,
@@ -310,13 +317,14 @@ static gpu::LaunchFuncOp createLaunchParallelRegion(
 }
 
 // TODO grab the one from KernelOutining if possible
-gpu::GPUModuleOp OpenACCToGPULoweringPass::createKernelModule(
+gpu::GPUModuleOp OpenACCToGPUPass::createKernelModule(
     gpu::GPUFuncOp kernelFunc, const SymbolTable &parentSymbolTable) {
   // TODO: This code cannot use an OpBuilder because it must be inserted into
   // a SymbolTable by the caller. SymbolTable needs to be refactored to
   // prevent manual building of Ops with symbols in code using SymbolTables
   // and then this needs to use the OpBuilder.
-  auto context = getModule().getContext();
+  ModuleOp module = getOperation();
+  auto context = module.getContext();
   Builder builder(context);
   OperationState state(kernelFunc.getLoc(),
                        gpu::GPUModuleOp::getOperationName());
@@ -590,7 +598,7 @@ static void cleanUpUnsuedIndexOps(gpu::GPUFuncOp outlinedParallelRegion,
   }
 }
 
-void OpenACCToGPULoweringPass::runOnModule() {
+void OpenACCToGPUPass::runOnOperation() {
 
   ConversionTarget target(getContext());
   target.addIllegalDialect<acc::OpenACCDialect>();
@@ -609,14 +617,14 @@ void OpenACCToGPULoweringPass::runOnModule() {
   OwningRewritePatternList patterns;
   patterns.insert<ReductionOpLowering>(&getContext());
 
-  auto m = getModule();
+  ModuleOp m = getOperation();
   SymbolTable symbolTable(m);
   bool modified = false;
 
   if (failed(applyPartialConversion(m, target, patterns)))
     signalPassFailure();
-
-  for (auto func : getModule().getOps<FuncOp>()) {
+  ModuleOp module = getOperation();
+  for (auto func : module.getOps<FuncOp>()) {
     Block::iterator insertPt(func.getOperation()->getNextNode());
 
     // Walk over ParallelOp operation to outline the parallel region
@@ -684,13 +692,14 @@ void OpenACCToGPULoweringPass::runOnModule() {
   }
 
   if (modified)
-    getModule().setAttr(gpu::GPUDialect::getContainerModuleAttrName(),
+    module.setAttr(gpu::GPUDialect::getContainerModuleAttrName(),
                         UnitAttr::get(&getContext()));
 
   // if (failed(applyPartialConversion(m, target, patterns)))
   //   signalPassFailure();
 }
 
-std::unique_ptr<Pass> mlir::createConvertOpenACCToGPUPass() {
-  return std::make_unique<OpenACCToGPULoweringPass>();
+std::unique_ptr<OperationPass<ModuleOp>> 
+    mlir::createConvertOpenACCToGPUPass() {
+  return std::make_unique<OpenACCToGPUPass>();
 }

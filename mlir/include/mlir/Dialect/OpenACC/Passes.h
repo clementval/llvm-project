@@ -15,11 +15,12 @@
 
 namespace mlir {
 
-class Pass;
+class ModuleOp;
+template <typename T> class OperationPass;
 
-std::unique_ptr<Pass> createConvertOpenACCToGPUPass();
+std::unique_ptr<OperationPass<ModuleOp>> createConvertOpenACCToGPUPass();
 
-std::unique_ptr<Pass> createConvertOpenACCToStandardPass();
+std::unique_ptr<OperationPass<ModuleOp>> createConvertOpenACCToStandardPass();
 
 } // namespace mlir
 
