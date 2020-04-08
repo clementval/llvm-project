@@ -39930,6 +39930,25 @@ static SDValue combinePTESTCC(SDValue EFLAGS, X86::CondCode &CC,
                          DAG.getBitcast(OpVT, NotOp1), Op0);
     }
 
+    if (Op0 == Op1) {
+      SDValue BC = peekThroughBitcasts(Op0);
+
+      // TESTZ(AND(X,Y),AND(X,Y)) == TESTZ(X,Y)
+      if (BC.getOpcode() == ISD::AND || BC.getOpcode() == X86ISD::FAND) {
+        return DAG.getNode(EFLAGS.getOpcode(), SDLoc(EFLAGS), VT,
+                           DAG.getBitcast(OpVT, BC.getOperand(0)),
+                           DAG.getBitcast(OpVT, BC.getOperand(1)));
+      }
+
+      // TESTZ(AND(~X,Y),AND(~X,Y)) == TESTC(X,Y)
+      if (BC.getOpcode() == X86ISD::ANDNP || BC.getOpcode() == X86ISD::FANDN) {
+        CC = (CC == X86::COND_E ? X86::COND_B : X86::COND_AE);
+        return DAG.getNode(EFLAGS.getOpcode(), SDLoc(EFLAGS), VT,
+                           DAG.getBitcast(OpVT, BC.getOperand(0)),
+                           DAG.getBitcast(OpVT, BC.getOperand(1)));
+      }
+    }
+
     // TESTZ(-1,X) == TESTZ(X,X)
     if (ISD::isBuildVectorAllOnes(Op0.getNode()))
       return DAG.getNode(EFLAGS.getOpcode(), SDLoc(EFLAGS), VT, Op1, Op1);
@@ -41259,7 +41278,7 @@ static SDValue PromoteMaskArithmetic(SDNode *N, SelectionDAG &DAG,
   case ISD::ANY_EXTEND:
     return Op;
   case ISD::ZERO_EXTEND:
-    return DAG.getZeroExtendInReg(Op, DL, NarrowVT.getScalarType());
+    return DAG.getZeroExtendInReg(Op, DL, NarrowVT);
   case ISD::SIGN_EXTEND:
     return DAG.getNode(ISD::SIGN_EXTEND_INREG, DL, VT,
                        Op, DAG.getValueType(NarrowVT));
@@ -44870,7 +44889,7 @@ static SDValue combineExtSetcc(SDNode *N, SelectionDAG &DAG,
   SDValue Res = DAG.getSetCC(dl, VT, N0.getOperand(0), N0.getOperand(1), CC);
 
   if (N->getOpcode() == ISD::ZERO_EXTEND)
-    Res = DAG.getZeroExtendInReg(Res, dl, N0.getValueType().getScalarType());
+    Res = DAG.getZeroExtendInReg(Res, dl, N0.getValueType());
 
   return Res;
 }
