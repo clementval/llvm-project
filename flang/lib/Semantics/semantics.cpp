@@ -8,6 +8,7 @@
 
 #include "flang/Semantics/semantics.h"
 #include "assignment.h"
+#include "canonicalize-acc.h"
 #include "canonicalize-do.h"
 #include "canonicalize-omp.h"
 #include "check-allocate.h"
@@ -316,6 +317,7 @@ SymbolVector SemanticsContext::GetIndexVars(IndexVarKind kind) {
 bool Semantics::Perform() {
   return ValidateLabels(context_, program_) &&
       parser::CanonicalizeDo(program_) && // force line break
+      CanonicalizeAcc(context_.messages(), program_) &&
       CanonicalizeOmp(context_.messages(), program_) &&
       PerformStatementSemantics(context_, program_) &&
       ModFileWriter{context_}.WriteAll();

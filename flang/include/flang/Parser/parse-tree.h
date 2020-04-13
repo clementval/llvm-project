@@ -255,6 +255,8 @@ struct ArithmeticIfStmt;
 struct AssignStmt;
 struct AssignedGotoStmt;
 struct PauseStmt;
+struct OpenACCConstruct;
+struct OpenACCDeclarativeConstruct;
 struct OpenMPConstruct;
 struct OpenMPDeclarativeConstruct;
 struct OmpEndLoopDirective;
@@ -385,6 +387,7 @@ struct SpecificationConstruct {
       Statement<OtherSpecificationStmt>,
       Statement<common::Indirection<TypeDeclarationStmt>>,
       common::Indirection<StructureDef>,
+      common::Indirection<OpenACCDeclarativeConstruct>,
       common::Indirection<OpenMPDeclarativeConstruct>,
       common::Indirection<CompilerDirective>>
       u;
@@ -423,7 +426,8 @@ struct DeclarationConstruct {
 // from the implicit part to the declaration constructs
 struct SpecificationPart {
   TUPLE_CLASS_BOILERPLATE(SpecificationPart);
-  std::tuple<std::list<OpenMPDeclarativeConstruct>,
+  std::tuple<std::list<OpenACCDeclarativeConstruct>,
+      std::list<OpenMPDeclarativeConstruct>,
       std::list<Statement<common::Indirection<UseStmt>>>,
       std::list<Statement<common::Indirection<ImportStmt>>>, ImplicitPart,
       std::list<DeclarationConstruct>>
@@ -508,6 +512,7 @@ struct ExecutableConstruct {
       common::Indirection<SelectTypeConstruct>,
       common::Indirection<WhereConstruct>, common::Indirection<ForallConstruct>,
       common::Indirection<CompilerDirective>,
+      common::Indirection<OpenACCConstruct>,
       common::Indirection<OpenMPConstruct>,
       common::Indirection<OmpEndLoopDirective>>
       u;
@@ -3787,5 +3792,290 @@ struct OpenMPConstruct {
       OpenMPCriticalConstruct>
       u;
 };
+
+// Parse tree nodes for OpenACC 3.0 directives and clauses
+
+struct AccObject {
+  UNION_CLASS_BOILERPLATE(AccObject);
+  std::variant<Designator, /*common block*/ Name> u;
+};
+
+WRAPPER_CLASS(AccObjectList, std::list<AccObject>);
+
+// OpenACC directive beginning or ending a block
+struct AccBlockDirective {
+  ENUM_CLASS(Directive, Data, HostData, Kernels, Parallel, Serial);
+  WRAPPER_CLASS_BOILERPLATE(AccBlockDirective, Directive);
+  CharBlock source;
+};
+
+struct AccLoopDirective {
+  ENUM_CLASS(Directive, Loop);
+  WRAPPER_CLASS_BOILERPLATE(AccLoopDirective, Directive);
+  CharBlock source;
+};
+
+struct AccStandaloneDirective {
+  ENUM_CLASS(Directive, Cache, EnterData, ExitData, Init, Set,
+             Shutdown, Update);
+  WRAPPER_CLASS_BOILERPLATE(AccStandaloneDirective, Directive);
+  CharBlock source;
+};
+
+// 2.11 Combined constructs
+struct AccCombinedDirective {
+  ENUM_CLASS(Directive, KernelsLoop, ParallelLoop, SerialLoop)
+  WRAPPER_CLASS_BOILERPLATE(AccCombinedDirective, Directive);
+  CharBlock source;
+};
+
+struct AccDeclarativeDirective {
+  ENUM_CLASS(Directive, Declare);
+  WRAPPER_CLASS_BOILERPLATE(AccDeclarativeDirective, Directive);
+  CharBlock source;
+};
+
+
+// OpenACC Clauses
+struct AccDefaultClause {
+  ENUM_CLASS(Arg, None, Present)
+  WRAPPER_CLASS_BOILERPLATE(AccDefaultClause, Arg);
+  CharBlock source;
+};
+
+struct AccDataModifier {
+  ENUM_CLASS(Modifier, ReadOnly, Zero)
+  WRAPPER_CLASS_BOILERPLATE(AccDataModifier, Modifier);
+  CharBlock source;
+};
+
+struct AccObjectListWithModifier {
+  TUPLE_CLASS_BOILERPLATE(AccObjectListWithModifier);
+  std::tuple<std::optional<AccDataModifier>, AccObjectList> t;
+};
+
+// 2.5.13. + | * | max | min | iand | ior | ieor | .and. | .or. | .eqv | .neqv
+struct AccReductionOperator {
+  UNION_CLASS_BOILERPLATE(AccReductionOperator);
+  std::variant<DefinedOperator, ProcedureDesignator> u;
+};
+
+struct AccObjectListWithReduction {
+  TUPLE_CLASS_BOILERPLATE(AccObjectListWithReduction);
+  std::tuple<AccReductionOperator, AccObjectList> t;
+};
+
+struct AccWaitArgument {
+  TUPLE_CLASS_BOILERPLATE(AccWaitArgument);
+  std::tuple<std::optional<ScalarIntExpr>, std::list<ScalarIntExpr>> t;
+};
+
+struct AccSizeExpr {
+  TUPLE_CLASS_BOILERPLATE(AccSizeExpr);
+  CharBlock source;
+  std::tuple<std::optional<ScalarIntExpr>> t; // if null then *
+};
+
+struct AccSizeExprList {
+  WRAPPER_CLASS_BOILERPLATE(AccSizeExprList, std::list<AccSizeExpr>);
+};
+
+struct AccGangArgument {
+  TUPLE_CLASS_BOILERPLATE(AccGangArgument);
+  std::tuple<std::optional<ScalarIntExpr>, std::optional<AccSizeExpr>> t;
+};
+
+struct AccClause {
+  UNION_CLASS_BOILERPLATE(AccClause);
+
+  EMPTY_CLASS(Auto); // 2.9.6
+  EMPTY_CLASS(Capture); // 2.12
+  EMPTY_CLASS(Finalize); // 2.6.6
+  EMPTY_CLASS(IfPresent); // 2.14.4
+  EMPTY_CLASS(Independent); // 2.9.9
+  EMPTY_CLASS(NoHost); // 2.15.1
+  EMPTY_CLASS(Read); // 2.12
+  EMPTY_CLASS(Seq); // 2.9.5
+
+  EMPTY_CLASS(Write); // 2.12
+  WRAPPER_CLASS(Async, std::optional<ScalarIntExpr>); // 2.16.1
+  WRAPPER_CLASS(Attach, AccObjectList); // 2.7.11
+  WRAPPER_CLASS(Bind, Name); // 2.15.1
+  WRAPPER_CLASS(Collapse, ScalarIntConstantExpr); // 2.9.1
+  WRAPPER_CLASS(Copy, AccObjectList); // 2.7.5
+  WRAPPER_CLASS(Copyin, AccObjectListWithModifier); // 2.7.6
+  WRAPPER_CLASS(Copyout, AccObjectListWithModifier); // 2.7.7
+  WRAPPER_CLASS(Create, AccObjectListWithModifier); // 2.7.8
+  WRAPPER_CLASS(Default, AccDefaultClause); // 2.5.14
+  WRAPPER_CLASS(DefaultAsync, ScalarIntExpr); // 2.4.12
+  WRAPPER_CLASS(Delete, AccObjectList); // 2.7.10
+  WRAPPER_CLASS(Detach, AccObjectList); // 2.7.12
+  WRAPPER_CLASS(Device, AccObjectList); // 2.14.4
+  WRAPPER_CLASS(DeviceNum, ScalarIntConstantExpr); // TODO
+  WRAPPER_CLASS(DevicePtr, AccObjectList); // 2.7.3
+  WRAPPER_CLASS(DeviceResident, AccObjectList); // 2.13
+  WRAPPER_CLASS(DeviceType, std::optional<std::list<Name>>); // 2.4
+  WRAPPER_CLASS(FirstPrivate, AccObjectList); // 2.5.12
+  WRAPPER_CLASS(Gang, std::optional<AccGangArgument>); // 2.9.2
+  WRAPPER_CLASS(Host, AccObjectList); // 2.14.4
+  WRAPPER_CLASS(If, ScalarLogicalExpr); // 2.5.4
+  WRAPPER_CLASS(Link, AccObjectList); // 2.13
+  WRAPPER_CLASS(NoCreate, AccObjectList); // 2.7.9
+  WRAPPER_CLASS(NumGangs, ScalarIntExpr); // 2.5.8
+  WRAPPER_CLASS(NumWorkers, ScalarIntExpr); // 2.5.9
+  WRAPPER_CLASS(Present, AccObjectList); // 2.7.4
+  WRAPPER_CLASS(Private, AccObjectList); // 2.5.11
+  WRAPPER_CLASS(Tile, AccSizeExprList); // 2.9.7
+  WRAPPER_CLASS(UseDevice, AccObjectList); // 2.8.1
+  WRAPPER_CLASS(Reduction, AccObjectListWithReduction); // 2.5.13
+  WRAPPER_CLASS(Self, std::optional<ScalarLogicalExpr>); // 2.5.5
+  WRAPPER_CLASS(Vector, std::optional<ScalarIntExpr>); // 2.9.4
+  WRAPPER_CLASS(VectorLength, ScalarIntExpr); // 2.5.10
+  WRAPPER_CLASS(Wait, std::optional<AccWaitArgument>); // 2.16.2
+  WRAPPER_CLASS(Worker, std::optional<ScalarIntExpr>); // 2.9.3
+  CharBlock source;
+
+  std::variant<Auto, Capture, Finalize, Gang, IfPresent, Independent, NoHost,
+      Read, Seq, Vector, Worker, Write, Async, Attach, Bind, Collapse, Copy,
+      Copyin, Copyout, Create, Default, DefaultAsync, Delete, Detach, Device,
+      DeviceNum, DeviceResident, DevicePtr, DeviceType, Host, If, Link,
+      FirstPrivate, NoCreate, NumGangs, NumWorkers, Present, Private, Tile,
+      UseDevice, Reduction, Self, VectorLength, Wait> u;
+};
+
+struct AccClauseList {
+  WRAPPER_CLASS_BOILERPLATE(AccClauseList, std::list<AccClause>);
+  CharBlock source;
+};
+
+struct OpenACCRoutineConstruct {
+  TUPLE_CLASS_BOILERPLATE(OpenACCRoutineConstruct);
+  CharBlock source;
+  std::tuple<Verbatim, std::optional<Name>, AccClauseList> t;
+};
+
+struct OpenACCCacheConstruct {
+  TUPLE_CLASS_BOILERPLATE(OpenACCCacheConstruct);
+  CharBlock source;
+  std::tuple<Verbatim, AccObjectListWithModifier> t;
+};
+
+struct OpenACCWaitConstruct {
+  TUPLE_CLASS_BOILERPLATE(OpenACCWaitConstruct);
+  CharBlock source;
+  std::tuple<Verbatim, std::optional<AccWaitArgument>, AccClauseList> t;
+};
+
+struct AccBeginLoopDirective {
+  TUPLE_CLASS_BOILERPLATE(AccBeginLoopDirective);
+  std::tuple<AccLoopDirective, AccClauseList> t;
+  CharBlock source;
+};
+
+struct AccBeginBlockDirective {
+  TUPLE_CLASS_BOILERPLATE(AccBeginBlockDirective);
+  CharBlock source;
+  std::tuple<AccBlockDirective, AccClauseList> t;
+};
+
+struct AccEndBlockDirective {
+  CharBlock source;
+  WRAPPER_CLASS_BOILERPLATE(AccEndBlockDirective, AccBlockDirective);
+};
+
+// ACC END ATOMIC
+EMPTY_CLASS(AccEndAtomic);
+
+// ACC ATOMIC READ
+struct AccAtomicRead {
+  TUPLE_CLASS_BOILERPLATE(AccAtomicRead);
+  std::tuple<Verbatim, Statement<AssignmentStmt>,
+      std::optional<AccEndAtomic>> t;
+};
+
+// ACC ATOMIC WRITE
+struct AccAtomicWrite {
+  TUPLE_CLASS_BOILERPLATE(AccAtomicWrite);
+  std::tuple<Verbatim, Statement<AssignmentStmt>,
+      std::optional<AccEndAtomic>> t;
+};
+
+// ACC ATOMIC UPDATE
+struct AccAtomicUpdate {
+  TUPLE_CLASS_BOILERPLATE(AccAtomicUpdate);
+  std::tuple<std::optional<Verbatim>, Statement<AssignmentStmt>,
+      std::optional<AccEndAtomic>> t;
+};
+
+// ACC ATOMIC CAPTURE
+struct AccAtomicCapture {
+  TUPLE_CLASS_BOILERPLATE(AccAtomicCapture);
+  WRAPPER_CLASS(Stmt1, Statement<AssignmentStmt>);
+  WRAPPER_CLASS(Stmt2, Statement<AssignmentStmt>);
+  std::tuple<Verbatim, Stmt1, Stmt2, AccEndAtomic> t;
+};
+
+struct OpenACCAtomicConstruct {
+  UNION_CLASS_BOILERPLATE(OpenACCAtomicConstruct);
+  std::variant<AccAtomicRead, AccAtomicWrite, AccAtomicCapture,
+      AccAtomicUpdate> u;
+};
+
+struct OpenACCBlockConstruct {
+  TUPLE_CLASS_BOILERPLATE(OpenACCBlockConstruct);
+  std::tuple<AccBeginBlockDirective, Block, AccEndBlockDirective> t;
+};
+
+struct OpenACCStandaloneDeclarativeConstruct {
+  TUPLE_CLASS_BOILERPLATE(OpenACCStandaloneDeclarativeConstruct);
+  CharBlock source;
+  std::tuple<AccDeclarativeDirective, AccClauseList> t;
+};
+
+struct AccBeginCombinedDirective {
+  TUPLE_CLASS_BOILERPLATE(AccBeginCombinedDirective);
+  std::tuple<AccCombinedDirective, AccClauseList> t;
+};
+
+struct AccEndCombinedDirective {
+  WRAPPER_CLASS_BOILERPLATE(AccEndCombinedDirective, AccCombinedDirective);
+  CharBlock source;
+};
+
+struct OpenACCCombinedConstruct {
+  TUPLE_CLASS_BOILERPLATE(OpenACCCombinedConstruct);
+  CharBlock source;
+  std::tuple<AccBeginCombinedDirective, Block,
+      std::optional<AccEndCombinedDirective>> t;
+};
+
+struct OpenACCDeclarativeConstruct {
+  UNION_CLASS_BOILERPLATE(OpenACCDeclarativeConstruct);
+  CharBlock source;
+  std::variant<OpenACCStandaloneDeclarativeConstruct> u;
+};
+
+// OpenACC directives enclosing do loop
+struct OpenACCLoopConstruct {
+  TUPLE_CLASS_BOILERPLATE(OpenACCLoopConstruct);
+  OpenACCLoopConstruct(AccBeginLoopDirective &&a) 
+      : t({std::move(a), std::nullopt}) {}
+  std::tuple<AccBeginLoopDirective, std::optional<DoConstruct>> t;
+};
+
+struct OpenACCStandaloneConstruct {
+  TUPLE_CLASS_BOILERPLATE(OpenACCStandaloneConstruct);
+  CharBlock source;
+  std::tuple<AccStandaloneDirective, AccClauseList> t;
+};
+
+struct OpenACCConstruct {
+  UNION_CLASS_BOILERPLATE(OpenACCConstruct);
+  std::variant<OpenACCBlockConstruct, OpenACCCombinedConstruct,
+      OpenACCLoopConstruct, OpenACCStandaloneConstruct, 
+      OpenACCRoutineConstruct, OpenACCCacheConstruct, OpenACCWaitConstruct,
+      OpenACCAtomicConstruct> u;
+};
+
 } // namespace Fortran::parser
 #endif // FORTRAN_PARSER_PARSE_TREE_H_

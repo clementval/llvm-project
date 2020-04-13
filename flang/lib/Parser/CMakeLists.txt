@@ -11,6 +11,7 @@ add_library(FortranParser
   instrumented-parser.cpp
   io-parsers.cpp
   message.cpp
+  openacc-parsers.cpp
   openmp-parsers.cpp
   parse-tree.cpp
   parsing.cpp

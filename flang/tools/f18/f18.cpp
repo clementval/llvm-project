@@ -466,6 +466,9 @@ int main(int argc, char *const argv[]) {
           Fortran::common::LanguageFeature::BackslashEscapes, true);
     } else if (arg == "-Mstandard") {
       driver.warnOnNonstandardUsage = true;
+    } else if (arg == "-fopenacc") {
+      options.features.Enable(Fortran::common::LanguageFeature::OpenACC);
+      options.predefinitions.emplace_back("_OPENACC", "201911");      
     } else if (arg == "-fopenmp") {
       options.features.Enable(Fortran::common::LanguageFeature::OpenMP);
       options.predefinitions.emplace_back("_OPENMP", "201511");
@@ -632,6 +635,9 @@ int main(int argc, char *const argv[]) {
 
   if (driver.warnOnNonstandardUsage) {
     options.features.WarnOnAllNonstandard();
+  }
+  if(options.features.IsEnabled(Fortran::common::LanguageFeature::OpenACC)) {
+    driver.pgf90Args.push_back("-acc");
   }
   if (options.features.IsEnabled(Fortran::common::LanguageFeature::OpenMP)) {
     driver.pgf90Args.push_back("-mp");
