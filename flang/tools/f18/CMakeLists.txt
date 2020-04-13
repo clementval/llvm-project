@@ -21,6 +21,7 @@ set(MODULES
   "iso_c_binding"
   "iso_fortran_env"
   "omp_lib"
+  "openacc"
   "__fortran_builtins"
 )
 
