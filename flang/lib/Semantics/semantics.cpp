@@ -11,6 +11,7 @@
 #include "canonicalize-acc.h"
 #include "canonicalize-do.h"
 #include "canonicalize-omp.h"
+#include "check-acc-structure.h"
 #include "check-allocate.h"
 #include "check-arithmeticif.h"
 #include "check-case.h"
@@ -152,11 +153,11 @@ private:
 };
 
 using StatementSemanticsPass1 = ExprChecker;
-using StatementSemanticsPass2 = SemanticsVisitor<AllocateChecker,
-    ArithmeticIfStmtChecker, AssignmentChecker, CaseChecker, CoarrayChecker,
-    DataChecker, DeallocateChecker, DoForallChecker, IfStmtChecker, IoChecker,
-    MiscChecker, NamelistChecker, NullifyChecker, OmpStructureChecker,
-    PurityChecker, ReturnStmtChecker, StopChecker>;
+using StatementSemanticsPass2 = SemanticsVisitor<AccStructureChecker,
+    AllocateChecker, ArithmeticIfStmtChecker, AssignmentChecker, CaseChecker,
+    CoarrayChecker, DataChecker, DeallocateChecker, DoForallChecker,
+    IfStmtChecker, IoChecker, MiscChecker, NamelistChecker, NullifyChecker, 
+    OmpStructureChecker, PurityChecker, ReturnStmtChecker, StopChecker>;
 
 static bool PerformStatementSemantics(
     SemanticsContext &context, parser::Program &program) {

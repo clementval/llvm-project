@@ -5,6 +5,7 @@ add_library(FortranSemantics
   canonicalize-acc.cpp
   canonicalize-do.cpp
   canonicalize-omp.cpp
+  check-acc-structure.cpp
   check-allocate.cpp
   check-arithmeticif.cpp
   check-call.cpp
