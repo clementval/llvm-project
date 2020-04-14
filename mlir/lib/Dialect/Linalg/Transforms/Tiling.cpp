@@ -21,7 +21,6 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -359,8 +358,8 @@ Optional<TiledLinalgOp> static tileLinalgOpImpl(OpBuilder &b, LinalgOp op,
   // The flattened loopToOperandRangesMaps is expected to be an invertible
   // permutation map (asserted in the inverse calculation).
   auto mapsRange = op.indexing_maps().getAsRange<AffineMapAttr>();
-  auto maps =
-      functional::map([](AffineMapAttr a) { return a.getValue(); }, mapsRange);
+  auto maps = llvm::to_vector<8>(
+      llvm::map_range(mapsRange, [](AffineMapAttr a) { return a.getValue(); }));
   auto viewSizesToLoopsMap = inversePermutation(concatAffineMaps(maps));
   assert(viewSizesToLoopsMap && "expected invertible map");
 
@@ -508,9 +507,7 @@ static void tileLinalgOps(FuncOp f, ArrayRef<int64_t> tileSizes) {
 namespace {
 struct LinalgTilingPass : public LinalgTilingBase<LinalgTilingPass> {
   LinalgTilingPass() = default;
-  LinalgTilingPass(ArrayRef<int64_t> sizes) {
-    tileSizes->assign(sizes.begin(), sizes.end());
-  }
+  LinalgTilingPass(ArrayRef<int64_t> sizes) { tileSizes = sizes; }
 
   void runOnFunction() override {
     tileLinalgOps<loop::ForOp>(getFunction(), tileSizes);
@@ -521,7 +518,7 @@ struct LinalgTilingToParallelLoopsPass
     : public LinalgTilingToParallelLoopsBase<LinalgTilingToParallelLoopsPass> {
   LinalgTilingToParallelLoopsPass() = default;
   LinalgTilingToParallelLoopsPass(ArrayRef<int64_t> sizes) {
-    tileSizes->assign(sizes.begin(), sizes.end());
+    tileSizes = sizes;
   }
 
   void runOnFunction() override {

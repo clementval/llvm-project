@@ -15,6 +15,24 @@
 
 include "mlir/Pass/PassBase.td"
 
+def AffineLoopFusion : FunctionPass<"affine-loop-fusion"> {
+  let summary = "Fuse affine loop nests";
+  let constructor = "mlir::createLoopFusionPass()";
+  let options = [
+    Option<"computeToleranceThreshold", "fusion-compute-tolerance", "double",
+           /*default=*/"0.30f", "Fractional increase in additional computation "
+                                "tolerated while fusing">,
+    Option<"fastMemorySpace", "fusion-fast-mem-space", "unsigned",
+           /*default=*/"0",
+           "Faster memory space number to promote fusion buffers to">,
+    Option<"localBufSizeThreshold", "fusion-local-buf-threshold", "uint64_t",
+           /*default=*/"0", "Threshold size (KiB) for promoting local buffers "
+                            "to fast memory space">,
+    Option<"maximalFusion", "fusion-maximal", "bool", /*default=*/"false",
+           "Enables maximal loop fusion">,
+  ];
+}
+
 def AffinePipelineDataTransfer
     : FunctionPass<"affine-pipeline-data-transfer"> {
   let summary = "Pipeline non-blocking data transfers between explicitly "
@@ -84,18 +102,25 @@ def AffinePipelineDataTransfer
   let constructor = "mlir::createPipelineDataTransferPass()";
 }
 
-def AffineLoopFusion : FunctionPass<"affine-loop-fusion"> {
-  let summary = "Fuse affine loop nests";
-  let constructor = "mlir::createLoopFusionPass()";
-}
-
 def Canonicalizer : Pass<"canonicalize"> {
   let summary = "Canonicalize operations";
+  let description = [{
+    This pass performs various types of canonicalizations over a set of
+    operations. See [Operation Canonicalization](Canonicalization.md) for more
+    details.
+  }];
   let constructor = "mlir::createCanonicalizerPass()";
 }
 
 def CSE : Pass<"cse"> {
   let summary = "Eliminate common sub-expressions";
+  let description = [{
+    This pass implements a generalized algorithm for common sub-expression
+    elimination. This pass relies on information provided by the
+    `Memory SideEffect` interface to identify when it is safe to eliminate
+    operations. See [Common subexpression elimination](https://en.wikipedia.org/wiki/Common_subexpression_elimination)
+    for more general details on this optimization.
+  }];
   let constructor = "mlir::createCSEPass()";
   let statistics = [
     Statistic<"numCSE", "num-cse'd", "Number of operations CSE'd">,
@@ -106,14 +131,55 @@ def CSE : Pass<"cse"> {
 def Inliner : Pass<"inline"> {
   let summary = "Inline function calls";
   let constructor = "mlir::createInlinerPass()";
+  let options = [
+    Option<"disableCanonicalization", "disable-simplify", "bool",
+           /*default=*/"false",
+           "Disable running simplifications during inlining">,
+    Option<"maxInliningIterations", "max-iterations", "unsigned",
+           /*default=*/"4",
+           "Maximum number of iterations when inlining within an SCC">,
+  ];
 }
 
 def LocationSnapshot : Pass<"snapshot-op-locations"> {
   let summary = "Generate new locations from the current IR";
+  let description = [{
+    This pass allows for generating new locations from the IR during any stage
+    of compilation, by snapshotting the IR to a file and using that file to
+    generate new locations for the operations.
+
+    Depending on the value of the `tag` option, different resulting locations
+    may be generated:
+
+    * If unset, the original location of the operation is replaced.
+
+    Example:
+
+    ```mlir
+    // old:
+    ... loc("original_source.cpp":1:1)
+
+    // new:
+    ... loc("snapshot_source.mlir":10:10)
+    ```
+
+    * If set, the new location is fused with the original location in the form
+    of a [`Name Location`](Diagnostics.md#name-location) with the specified tag.
+
+    Example:
+
+    ```mlir
+    // old:
+    ... loc("original_source.cpp":1:1)
+
+    // new:
+    ... loc(fused["original_source.cpp":1:1, "snapshot"("snapshot_source.mlir":10:10)])
+    ```
+  }];
   let constructor = "mlir::createLocationSnapshotPass()";
   let options = [
     Option<"fileName", "filename", "std::string", /*default=*/"",
-           "The filename to print the generated IR.">,
+           "The filename to print the generated IR">,
     Option<"tag", "tag", "std::string", /*default=*/"",
            "A tag to use when fusing the new locations with the "
            "original. If unset, the locations are replaced.">,
@@ -209,11 +275,53 @@ def PrintOp : Pass<"print-op-graph", "ModuleOp"> {
 
 def StripDebugInfo : Pass<"strip-debuginfo"> {
   let summary = "Strip debug info from all operations";
+  let description = [{
+    This pass strips the IR of any location information, by replacing all
+    operation locations with [`unknown`](Diagnostics.md#unknown-location).
+  }];
   let constructor = "mlir::createStripDebugInfoPass()";
 }
 
 def SymbolDCE : Pass<"symbol-dce"> {
   let summary = "Eliminate dead symbols";
+  let description = [{
+    This pass deletes all symbols that are found to be unreachable. This is done
+    by computing the set of operations that are known to be live, propagating
+    that liveness to other symbols, and then deleting all symbols that are not
+    within this live set. Live symbols are those that have a
+    [visibility](SymbolsAndSymbolTables.md#symbol-visibility) that extends
+    beyond the IR, e.g. `public`, or those that are referenced by live symbols
+    or other non-Symbol operations.
+
+    For example, consider the following input:
+
+    ```mlir
+    func @dead_private_function() attributes { sym_visibility = "private" }
+    func @live_private_function() attributes { sym_visibility = "private" }
+
+    // Note: The `public` isn't necessary here, as this is the default.
+    func @public_function() attributes { sym_visibility = "public" } {
+      "foo.return"() {uses = [@live_private_function]} : () -> ()
+    }
+    ```
+
+    A known live function, `public_function`, contains a reference to an
+    otherwise non-live function `live_private_function`. After running
+    `symbol-dce`, only these two symbols should remain, as the final symbol
+    `dead_private_function` is not visible outside of the current IR and there
+    are no links to known-live operations. After running, we get the expected:
+
+    ```mlir
+    func @live_private_function() attributes { sym_visibility = "private" }
+
+    func @public_function() attributes { sym_visibility = "public" } {
+      "foo.return"() {uses = [@live_private_function]} : () -> ()
+    }
+    ```
+
+    See [Symbols and SymbolTables](SymbolsAndSymbolTables.md) for more
+    information on `Symbols`.
+  }];
   let constructor = "mlir::createSymbolDCEPass()";
 }
 
