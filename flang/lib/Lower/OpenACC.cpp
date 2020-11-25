@@ -23,7 +23,7 @@
 #include "llvm/Frontend/OpenACC/ACC.h.inc"
 
 // Special value for * passed in device_type or gang clauses.
-static constexpr std::int64_t starCst{-1};
+static constexpr std::int64_t starCst = -1;
 
 static const Fortran::parser::Name *
 getDesignatorNameIfDataRef(const Fortran::parser::Designator &designator) {
@@ -125,10 +125,9 @@ static Op createSimpleOp(Fortran::lower::FirOpBuilder &builder,
 static void genAsyncClause(Fortran::lower::AbstractConverter &converter,
                            const Fortran::parser::AccClause::Async *asyncClause,
                            mlir::Value &async, bool &addAsyncAttr) {
-  const auto &asyncClauseValue = asyncClause->v;
-  if (asyncClauseValue) { // async has a value.
+  if (asyncClause->v.has_value()) { // async has a value.
     async = fir::getBase(converter.genExprValue(
-        *Fortran::semantics::GetExpr(*asyncClauseValue)));
+        *Fortran::semantics::GetExpr(*(asyncClause->v))));
   } else {
     addAsyncAttr = true;
   }
@@ -588,6 +587,37 @@ genACC(Fortran::lower::AbstractConverter &converter,
 }
 
 static void
+genACCParallelLoopOps(Fortran::lower::AbstractConverter &converter,
+                      const Fortran::parser::AccClauseList &accClauseList) {
+  createParallelOp(converter, accClauseList);
+  createLoopOp(converter, accClauseList);
+}
+
+static void
+genACC(Fortran::lower::AbstractConverter &converter,
+       Fortran::lower::pft::Evaluation &eval,
+       const Fortran::parser::OpenACCCombinedConstruct &combinedConstruct) {
+  const auto &beginCombinedDirective =
+      std::get<Fortran::parser::AccBeginCombinedDirective>(combinedConstruct.t);
+  const auto &combinedDirective =
+      std::get<Fortran::parser::AccCombinedDirective>(beginCombinedDirective.t);
+  const auto &accClauseList =
+      std::get<Fortran::parser::AccClauseList>(beginCombinedDirective.t);
+
+  if (combinedDirective.v == llvm::acc::ACCD_kernels_loop) {
+    TODO("OpenACC Kernels Loop construct not lowered yet!");
+  } else if (combinedDirective.v == llvm::acc::ACCD_parallel_loop) {
+    genACCParallelLoopOps(converter, accClauseList);
+  } else if (combinedDirective.v == llvm::acc::ACCD_serial_loop) {
+    TODO("OpenACC Serial Loop construct not lowered yet!");
+  } else {
+    llvm::report_fatal_error(
+        "Unknown combined construct encountered in lowering");
+  }
+}
+
+
+static void
 genACCEnterDataOp(Fortran::lower::AbstractConverter &converter,
                   const Fortran::parser::AccClauseList &accClauseList) {
   mlir::Value ifCond, async, waitDevnum;
@@ -939,7 +969,7 @@ void Fortran::lower::genOpenACCConstruct(
           },
           [&](const Fortran::parser::OpenACCCombinedConstruct
                   &combinedConstruct) {
-            TODO("OpenACC Combined construct not lowered yet!");
+            genACC(converter, eval, combinedConstruct);
           },
           [&](const Fortran::parser::OpenACCLoopConstruct &loopConstruct) {
             genACC(converter, eval, loopConstruct);
