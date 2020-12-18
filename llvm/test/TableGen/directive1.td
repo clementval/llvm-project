@@ -1,5 +1,4 @@
 // RUN: llvm-tblgen -gen-directive-decl -I %p/../../include %s | FileCheck -match-full-lines %s
-// RUN: llvm-tblgen -gen-directive-impl -I %p/../../include %s | FileCheck -match-full-lines %s -check-prefix=IMPL
 // RUN: llvm-tblgen -gen-directive-gen -I %p/../../include %s | FileCheck -match-full-lines %s -check-prefix=GEN
 
 include "llvm/Frontend/Directive/DirectiveBase.td"
@@ -101,73 +100,6 @@ def TDL_DirA : Directive<"dira"> {
 // CHECK-NEXT:  #endif // LLVM_Tdl_INC
 
 
-// IMPL:       #include "llvm/ADT/StringRef.h"
-// IMPL-NEXT:  #include "llvm/ADT/StringSwitch.h"
-// IMPL-NEXT:  #include "llvm/Support/ErrorHandling.h"
-// IMPL-EMPTY:
-// IMPL-NEXT:  using namespace llvm;
-// IMPL-NEXT:  using namespace tdl;
-// IMPL-EMPTY:
-// IMPL-NEXT:  Directive llvm::tdl::getTdlDirectiveKind(llvm::StringRef Str) {
-// IMPL-NEXT:    return llvm::StringSwitch<Directive>(Str)
-// IMPL-NEXT:      .Case("dira",TDLD_dira)
-// IMPL-NEXT:      .Default(TDLD_dira);
-// IMPL-NEXT:  }
-// IMPL-EMPTY:
-// IMPL-NEXT:  llvm::StringRef llvm::tdl::getTdlDirectiveName(Directive Kind) {
-// IMPL-NEXT:    switch (Kind) {
-// IMPL-NEXT:      case TDLD_dira:
-// IMPL-NEXT:        return "dira";
-// IMPL-NEXT:    }
-// IMPL-NEXT:    llvm_unreachable("Invalid Tdl Directive kind");
-// IMPL-NEXT:  }
-// IMPL-EMPTY:
-// IMPL-NEXT:  Clause llvm::tdl::getTdlClauseKind(llvm::StringRef Str) {
-// IMPL-NEXT:    return llvm::StringSwitch<Clause>(Str)
-// IMPL-NEXT:      .Case("clausea",TDLC_clausea)
-// IMPL-NEXT:      .Case("clauseb",TDLC_clauseb)
-// IMPL-NEXT:      .Default(TDLC_clauseb);
-// IMPL-NEXT:  }
-// IMPL-EMPTY:
-// IMPL-NEXT:  llvm::StringRef llvm::tdl::getTdlClauseName(Clause Kind) {
-// IMPL-NEXT:    switch (Kind) {
-// IMPL-NEXT:      case TDLC_clausea:
-// IMPL-NEXT:        return "clausea";
-// IMPL-NEXT:      case TDLC_clauseb:
-// IMPL-NEXT:        return "clauseb";
-// IMPL-NEXT:    }
-// IMPL-NEXT:    llvm_unreachable("Invalid Tdl Clause kind");
-// IMPL-NEXT:  }
-// IMPL-EMPTY:
-// IMPL-NEXT:  AKind llvm::tdl::getAKind(llvm::StringRef Str) {
-// IMPL-NEXT:    return llvm::StringSwitch<AKind>(Str)
-// IMPL-NEXT:      .Case("vala",TDLCV_vala)
-// IMPL-NEXT:      .Case("valb",TDLCV_valb)
-// IMPL-NEXT:      .Case("valc",TDLCV_valc)
-// IMPL-NEXT:      .Default(TDLCV_valc);
-// IMPL-NEXT:  }
-// IMPL-EMPTY:
-// IMPL-NEXT:  bool llvm::tdl::isAllowedClauseForDirective(Directive D, Clause C, unsigned Version) {
-// IMPL-NEXT:    assert(unsigned(D) <= llvm::tdl::Directive_enumSize);
-// IMPL-NEXT:    assert(unsigned(C) <= llvm::tdl::Clause_enumSize);
-// IMPL-NEXT:    switch (D) {
-// IMPL-NEXT:      case TDLD_dira:
-// IMPL-NEXT:        switch (C) {
-// IMPL-NEXT:          case TDLC_clausea:
-// IMPL-NEXT:            return 1 <= Version && 2147483647 >= Version;
-// IMPL-NEXT:          case TDLC_clauseb:
-// IMPL-NEXT:            return 1 <= Version && 2147483647 >= Version;
-// IMPL-NEXT:          default:
-// IMPL-NEXT:            return false;
-// IMPL-NEXT:        }
-// IMPL-NEXT:        break;
-// IMPL-NEXT:    }
-// IMPL-NEXT:    llvm_unreachable("Invalid Tdl Directive kind");
-// IMPL-NEXT:  }
-// IMPL-EMPTY:
-
-
-
 // GEN:       #ifdef GEN_FLANG_DIRECTIVE_CLAUSE_SETS
 // GEN-NEXT:  #undef GEN_FLANG_DIRECTIVE_CLAUSE_SETS
 // GEN-EMPTY:
@@ -241,3 +173,65 @@ def TDL_DirA : Directive<"dira"> {
 // GEN-NEXT:  }
 // GEN-EMPTY:
 // GEN-NEXT:  #endif // GEN_FLANG_CLAUSE_UNPARSE
+
+// GEN:       #ifdef GEN_DIRECTIVES_IMPL
+// GEN-NEXT:  #undef GEN_DIRECTIVES_IMPL
+// GEN-EMPTY:
+// GEN-NEXT:  Directive llvm::tdl::getTdlDirectiveKind(llvm::StringRef Str) {
+// GEN-NEXT:    return llvm::StringSwitch<Directive>(Str)
+// GEN-NEXT:      .Case("dira",TDLD_dira)
+// GEN-NEXT:      .Default(TDLD_dira);
+// GEN-NEXT:  }
+// GEN-EMPTY:
+// GEN-NEXT:  llvm::StringRef llvm::tdl::getTdlDirectiveName(Directive Kind) {
+// GEN-NEXT:    switch (Kind) {
+// GEN-NEXT:      case TDLD_dira:
+// GEN-NEXT:        return "dira";
+// GEN-NEXT:    }
+// GEN-NEXT:    llvm_unreachable("Invalid Tdl Directive kind");
+// GEN-NEXT:  }
+// GEN-EMPTY:
+// GEN-NEXT:  Clause llvm::tdl::getTdlClauseKind(llvm::StringRef Str) {
+// GEN-NEXT:    return llvm::StringSwitch<Clause>(Str)
+// GEN-NEXT:      .Case("clausea",TDLC_clausea)
+// GEN-NEXT:      .Case("clauseb",TDLC_clauseb)
+// GEN-NEXT:      .Default(TDLC_clauseb);
+// GEN-NEXT:  }
+// GEN-EMPTY:
+// GEN-NEXT:  llvm::StringRef llvm::tdl::getTdlClauseName(Clause Kind) {
+// GEN-NEXT:    switch (Kind) {
+// GEN-NEXT:      case TDLC_clausea:
+// GEN-NEXT:        return "clausea";
+// GEN-NEXT:      case TDLC_clauseb:
+// GEN-NEXT:        return "clauseb";
+// GEN-NEXT:    }
+// GEN-NEXT:    llvm_unreachable("Invalid Tdl Clause kind");
+// GEN-NEXT:  }
+// GEN-EMPTY:
+// GEN-NEXT:  AKind llvm::tdl::getAKind(llvm::StringRef Str) {
+// GEN-NEXT:    return llvm::StringSwitch<AKind>(Str)
+// GEN-NEXT:      .Case("vala",TDLCV_vala)
+// GEN-NEXT:      .Case("valb",TDLCV_valb)
+// GEN-NEXT:      .Case("valc",TDLCV_valc)
+// GEN-NEXT:      .Default(TDLCV_valc);
+// GEN-NEXT:  }
+// GEN-EMPTY:
+// GEN-NEXT:  bool llvm::tdl::isAllowedClauseForDirective(Directive D, Clause C, unsigned Version) {
+// GEN-NEXT:    assert(unsigned(D) <= llvm::tdl::Directive_enumSize);
+// GEN-NEXT:    assert(unsigned(C) <= llvm::tdl::Clause_enumSize);
+// GEN-NEXT:    switch (D) {
+// GEN-NEXT:      case TDLD_dira:
+// GEN-NEXT:        switch (C) {
+// GEN-NEXT:          case TDLC_clausea:
+// GEN-NEXT:            return 1 <= Version && 2147483647 >= Version;
+// GEN-NEXT:          case TDLC_clauseb:
+// GEN-NEXT:            return 1 <= Version && 2147483647 >= Version;
+// GEN-NEXT:          default:
+// GEN-NEXT:            return false;
+// GEN-NEXT:        }
+// GEN-NEXT:        break;
+// GEN-NEXT:    }
+// GEN-NEXT:    llvm_unreachable("Invalid Tdl Directive kind");
+// GEN-NEXT:  }
+// GEN-EMPTY:
+// GEN-NEXT:  #endif // GEN_DIRECTIVES_IMPL

@@ -55,7 +55,6 @@ enum ActionType {
   GenExegesis,
   GenAutomata,
   GenDirectivesEnumDecl,
-  GenDirectivesEnumImpl,
   GenDirectivesEnumGen,
 };
 
@@ -135,8 +134,6 @@ cl::opt<ActionType> Action(
         clEnumValN(GenAutomata, "gen-automata", "Generate generic automata"),
         clEnumValN(GenDirectivesEnumDecl, "gen-directive-decl",
                    "Generate directive related declaration code (header file)"),
-        clEnumValN(GenDirectivesEnumImpl, "gen-directive-impl",
-                   "Generate directive related implementation code"),
         clEnumValN(GenDirectivesEnumGen, "gen-directive-gen",
                    "Generate directive related implementation code part")));
 
@@ -265,9 +262,6 @@ bool LLVMTableGenMain(raw_ostream &OS, RecordKeeper &Records) {
     break;
   case GenDirectivesEnumDecl:
     EmitDirectivesDecl(Records, OS);
-    break;
-  case GenDirectivesEnumImpl:
-    EmitDirectivesImpl(Records, OS);
     break;
   case GenDirectivesEnumGen:
     EmitDirectivesGen(Records, OS);
