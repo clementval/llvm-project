@@ -975,6 +975,10 @@ LogicalResult ModuleTranslation::convertGlobals() {
         anyExternalLinkage ? nullptr : cst, op.sym_name(),
         /*InsertBefore=*/nullptr, llvm::GlobalValue::NotThreadLocal, addrSpace);
 
+    if (op.unnamed_addr().hasValue()) {
+      var->setUnnamedAddr(convertUnnamedAddrToLLVM(*op.unnamed_addr()));
+    }
+
     globalsMapping.try_emplace(op, var);
   }
 

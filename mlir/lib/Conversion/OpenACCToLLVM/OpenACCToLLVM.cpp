@@ -13,6 +13,8 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/OpenACC/OpenACC.h"
 
+#include "llvm/IR/GlobalValue.h"
+
 using namespace mlir;
 using namespace mlir::acc;
 
@@ -40,7 +42,8 @@ static LLVM::LLVMFunctionType getTgtTargetDataBeginMapperType(MLIRContext *ctx) 
   auto identTypePtr = LLVM::LLVMPointerType::get(identType);
   auto i32Ty = IntegerType::get(ctx, 32);
   auto i64Ty = IntegerType::get(ctx, 64);
-  return LLVM::LLVMFunctionType::get(llvmVoidType, {identTypePtr, i64Ty, i32Ty});
+  // return LLVM::LLVMFunctionType::get(llvmVoidType, {identTypePtr, i64Ty, i32Ty});
+  return LLVM::LLVMFunctionType::get(llvmVoidType, {i64Ty, i32Ty});
 }
 
 
@@ -80,12 +83,16 @@ struct EnterDataOpConversion : public ConvertOpToLLVMPattern<EnterDataOp> {
         rewriter.getI32IntegerAttr(enterDataOp.createOperands().size()));
 
     auto structType = getKmpIdentType(ctx);
+    auto structPtrType = LLVM::LLVMPointerType::get(structType);
 
-    auto one = rewriter.create<LLVM::ConstantOp>(loc, rewriter.getI32Type(),
-                                                 rewriter.getI32IntegerAttr(1));
-
-    auto structPtr = rewriter.create<LLVM::AllocaOp>(
-      loc, LLVM::LLVMPointerType::get(structType), one, /*alignment=*/0);
+    //
+    OpBuilder moduleBuilder(module.getBodyRegion(), rewriter.getListener());
+    std::string name(";unknown;unknown;0;0;;");
+    auto globalStringType = LLVM::LLVMArrayType::get(IntegerType::get(ctx, 8), name.size());
+    auto global = moduleBuilder.create<LLVM::GlobalOp>(
+      loc, globalStringType, /*isConstant=*/true, LLVM::Linkage::Private, "dummy",
+      rewriter.getStringAttr(name));
+    global.unnamed_addrAttr(rewriter.getI64IntegerAttr(2)); // UnnamedAddr::Global
 
 
 // Constant *I32Null = ConstantInt::getNullValue(Int32);
@@ -95,7 +102,8 @@ struct EnterDataOpConversion : public ConvertOpToLLVMPattern<EnterDataOp> {
 
 
 
-    auto callOp = rewriter.create<LLVM::CallOp>(loc, mapperFunc, ValueRange{structPtr, deviceId, argNum});
+    // auto callOp = rewriter.create<LLVM::CallOp>(loc, mapperFunc, ValueRange{structPtr, deviceId, argNum});
+    auto callOp = rewriter.create<LLVM::CallOp>(loc, mapperFunc, ValueRange{deviceId, argNum});
 
     rewriter.eraseOp(enterDataOp);
 

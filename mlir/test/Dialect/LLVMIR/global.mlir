@@ -63,6 +63,9 @@ func @references() {
   llvm.return
 }
 
+// CHECK: llvm.mlir.global private constant @foo(42 : i64) {unnamed_addr = 0 : i64} : i64
+llvm.mlir.global private constant @foo(42 : i64) {unnamed_addr = 0 : i64} : i64
+
 // -----
 
 // expected-error @+1 {{requires string attribute 'sym_name'}}

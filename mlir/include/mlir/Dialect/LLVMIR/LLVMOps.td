@@ -760,6 +760,18 @@ def Linkage : LLVM_EnumAttr<
   let cppNamespace = "::mlir::LLVM";
 }
 
+def UnnamedAddrNone : LLVM_EnumAttrCase<"None", "none", "None", 0>;
+def UnnamedAddrLocal : LLVM_EnumAttrCase<"Local", "local", "Local", 1>;
+def UnnamedAddrGlobal : LLVM_EnumAttrCase<"Global", "global", "Global", 2>;
+
+def UnnamedAddr : LLVM_EnumAttr<
+    "UnnamedAddr",
+    "::llvm::GlobalValue::UnnamedAddr",
+    "LLVM GlobalValue UnnamedAddr",
+    [UnnamedAddrNone, UnnamedAddrLocal, UnnamedAddrGlobal]> {
+  let cppNamespace = "::mlir::LLVM";
+}
+
 
 def LLVM_AddressOfOp : LLVM_Op<"mlir.addressof"> {
   let arguments = (ins FlatSymbolRefAttr:$global_name);
@@ -834,7 +846,8 @@ def LLVM_GlobalOp : LLVM_Op<"mlir.global",
     StrAttr:$sym_name,
     Linkage:$linkage,
     OptionalAttr<AnyAttr>:$value,
-    DefaultValuedAttr<Confined<I32Attr, [IntNonNegative]>, "0">:$addr_space
+    DefaultValuedAttr<Confined<I32Attr, [IntNonNegative]>, "0">:$addr_space,
+    OptionalAttr<UnnamedAddr>:$unnamed_addr
   );
   let summary = "LLVM dialect global.";
   let description = [{
