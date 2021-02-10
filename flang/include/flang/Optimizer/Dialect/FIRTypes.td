@@ -21,6 +21,60 @@ class FIR_Type<string name, string typeMnemonic> : TypeDef<fir_Dialect, name> {
   let mnemonic = typeMnemonic;
 }
 
+def BoxType : FIR_Type<"Box", "box"> {
+  let summary = "A descriptor tuple (captures a reference to an entity and other information)";
+  let description = [{
+    The type of a Fortran descriptor. Descriptors are tuples of information that
+    describe an entity being passed from a calling context. This information
+    might include (but is not limited to) whether the entity is an array, its
+    size, or what type it has.
+  }];
+
+  let parameters = (ins "mlir::Type":$eleTy, "mlir::AffineMapAttr":$map);
+
+  let printer = [{
+    $_printer << "box<";
+    $_printer.printType(getEleTy());
+    if (auto map = getLayoutMap()) {
+      $_printer << ", ";
+      $_printer.printAttribute(map);
+    }
+    $_printer << '>';
+  }];
+
+  // `box` `<` type (',' affine-map)? `>`
+  let parser = [{
+    mlir::Type ofTy;
+    if ($_parser.parseLess() || $_parser.parseType(ofTy)) {
+      $_parser.emitError(parser.getCurrentLocation(), "expected type parameter");
+      return Type();
+    }
+
+    mlir::AffineMapAttr map;
+    if (!$_parser.parseOptionalComma())
+      if ($_parser.parseAttribute(map)) {
+        $_parser.emitError($_parser.getCurrentLocation(), "expected affine map");
+        return {};
+      }
+    if ($_parser.parseGreater()) {
+      $_parser.emitError($_parser.getCurrentLocation(), "expected '>'");
+      return {};
+    }
+    return get(ofTy, map);
+  }];
+
+  let extraClassDeclaration = [{
+    mlir::Type getElementType() const { return getEleTy(); }
+    mlir::AffineMapAttr getLayoutMap() const { return getMap(); }
+    static BoxType get(mlir::Type eleTy, mlir::AffineMapAttr map = {}) {
+      return get(eleTy, map);
+    }
+  }];
+
+  let genAccessors = 1;
+  let genVerifyInvariantsDecl = 1;
+}
+
 def ShapeType : FIR_Type<"Shape", "shape"> {
   let summary = "shape of a multidimensional array object";
 
