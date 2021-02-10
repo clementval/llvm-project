@@ -48,4 +48,114 @@ def ShapeType : FIR_Type<"Shape", "shape"> {
   }];
 }
 
+def A_CharacterType : FIR_Type<"Character", "char"> {
+  let summary = "FIR character type";
+
+  let description = [{
+    Model of the Fortran CHARACTER intrinsic type, including the KIND type
+    parameter. The model optionally includes a LEN type parameter. A
+    CharacterType is thus the type of both a single character value and a
+    character with a LEN parameter.
+  }];
+
+  let parameters = (ins "KindTy":$FKind, "CharacterType::LenType":$len);
+
+  let printer = [{
+    $_printer << "char<" << getImpl()->FKind;
+    auto len = getImpl()->len;
+    if (len != fir::CharacterType::singleton()) {
+      $_printer << ',';
+      if (len == fir::CharacterType::unknownLen())
+        $_printer << '?';
+      else
+        $_printer << len;
+    }
+    $_printer << '>';
+  }];
+
+  // `char` `<` kind [`,` `len`] `>`
+  let parser = [{
+    int kind = 0;
+    if ($_parser.parseLess() || $_parser.parseInteger(kind)) {
+      $_parser.emitError($_parser.getCurrentLocation(), "kind value expected");
+      return Type();
+    }
+    CharacterType::LenType len = 1;
+    if (mlir::succeeded($_parser.parseOptionalComma())) {
+      if (mlir::succeeded($_parser.parseOptionalQuestion())) {
+        len = fir::CharacterType::unknownLen();
+      } else if (!mlir::succeeded($_parser.parseInteger(len))) {
+        $_parser.emitError($_parser.getCurrentLocation(), "len value expected");
+        return Type();
+      }
+    }
+    if ($_parser.parseGreater())
+      return Type();
+    return get(context, kind, len);
+  }];
+
+  let extraClassDeclaration = [{
+    using KindTy = unsigned;
+    using LenType = std::int64_t;
+
+    // Return unknown length CHARACTER type.
+    static CharacterType getUnknownLen(mlir::MLIRContext *ctxt, KindTy kind) {
+      return get(ctxt, kind, unknownLen());
+    }
+
+    // Return length 1 CHARACTER type.
+    static CharacterType getSingleton(mlir::MLIRContext *ctxt, KindTy kind) {
+      return get(ctxt, kind, singleton());
+    }
+
+    // CHARACTER is a singleton and has a LEN of 1.
+    static constexpr LenType singleton() { return 1; }
+    // CHARACTER has an unknown LEN property.
+    static constexpr LenType unknownLen() { return -1; }
+  }];
+}
+
+def BoxCharType : FIR_Type<"BoxChar", "boxchar"> {
+  let summary = "CHARACTER type descriptor.";
+
+  let description = [{
+    The type of a pair that describes a CHARACTER variable. Specifically, a
+    CHARACTER consists of a reference to a buffer (the string value) and a LEN
+    type parameter (the runtime length of the buffer).
+  }];
+
+  let parameters = (ins "KindTy":$kind);
+
+  let printer = [{
+    $_printer << "boxchar<" << getImpl()->kind << ">";
+  }];
+
+  let parser = [{
+    int kind = 0;
+    if ($_parser.parseLess() || $_parser.parseInteger(kind) ||
+      $_parser.parseGreater()) {
+      $_parser.emitError($_parser.getCurrentLocation(), "kind value expected");
+      return Type();
+    }
+    return get(context, kind);
+  }];
+
+  let genAccessors = 1;
+
+  let extraClassDeclaration = [{
+    using KindTy = unsigned;
+
+    // a !fir.boxchar<k> always wraps a !fir.char<k, ?>
+    CharacterType getElementType(mlir::MLIRContext *ctxt) const {
+      return CharacterType::getUnknownLen(ctxt, getKind());
+    }
+
+    CharacterType getEleTy() const {
+      return getElementType(getContext());
+    }
+  }];
+
+
+}
+
 #endif // FIR_DIALECT_FIR_TYPES

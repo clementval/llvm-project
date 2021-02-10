@@ -32,8 +32,6 @@ def fir_Type : Type<CPred<"fir::isa_fir_or_std_type($_self)">,
     "FIR dialect type">;
 
 // Fortran intrinsic types
-def fir_CharacterType : Type<CPred<"$_self.isa<fir::CharacterType>()">,
-    "FIR character type">;
 def fir_ComplexType : Type<CPred<"$_self.isa<fir::ComplexType>()">,
     "FIR complex type">;
 def fir_IntegerType : Type<CPred<"$_self.isa<fir::IntegerType>()">,
@@ -86,16 +84,12 @@ def AnyReferenceLike : TypeConstraint<Or<[fir_ReferenceType.predicate,
 // A descriptor tuple (captures a reference to an entity and other information)
 def fir_BoxType : Type<CPred<"$_self.isa<fir::BoxType>()">, "box type">;
 
-// CHARACTER type descriptor. A pair of a data reference and a LEN value.
-def fir_BoxCharType : Type<CPred<"$_self.isa<fir::BoxCharType>()">,
-    "box character type">;
-
 // PROCEDURE POINTER descriptor. A pair that can capture a host closure.
 def fir_BoxProcType : Type<CPred<"$_self.isa<fir::BoxProcType>()">,
     "box procedure type">;
 
 def AnyBoxLike : TypeConstraint<Or<[fir_BoxType.predicate,
-    fir_BoxCharType.predicate, fir_BoxProcType.predicate]>, "any box">;
+    BoxCharType.predicate, fir_BoxProcType.predicate]>, "any box">;
 
 def AnyRefOrBox : TypeConstraint<Or<[fir_ReferenceType.predicate,
     fir_HeapType.predicate, fir_PointerType.predicate, fir_BoxType.predicate]>,
@@ -1140,7 +1134,7 @@ def fir_EmboxCharOp : fir_Op<"emboxchar", [NoSideEffect]> {
 
   let arguments = (ins AnyReferenceLike:$memref, AnyIntegerLike:$len);
 
-  let results = (outs fir_BoxCharType);
+  let results = (outs BoxCharType);
 
   let assemblyFormat = [{
     $memref `,` $len attr-dict `:` functional-type(operands, results)
@@ -1284,7 +1278,7 @@ def fir_UnboxCharOp : fir_SimpleOp<"unboxchar", [NoSideEffect]> {
     ```
   }];
 
-  let arguments = (ins fir_BoxCharType:$boxchar);
+  let arguments = (ins BoxCharType:$boxchar);
 
   let results = (outs fir_ReferenceType, AnyIntegerLike);
 }
@@ -1349,7 +1343,7 @@ def fir_BoxCharLenOp : fir_SimpleOp<"boxchar_len", [NoSideEffect]> {
     ```
   }];
 
-  let arguments = (ins fir_BoxCharType:$val);
+  let arguments = (ins BoxCharType:$val);
 
   let results = (outs AnyIntegerLike);
 
