@@ -387,7 +387,7 @@ mlir::Type fir::parseFirType(FIROpsDialect *dialect, mlir::DialectAsmParser &par
   if (typeNameLit == "shape")
     return ShapeType::parse(dialect->getContext(), parser);
   if (typeNameLit == "shapeshift")
-    return parseShapeShift(parser);
+    return ShapeShiftType::parse(dialect->getContext(), parser);
   if (typeNameLit == "slice")
     return parseSlice(parser);
   if (typeNameLit == "tdesc")
@@ -439,29 +439,6 @@ private:
   CharacterTypeStorage() = delete;
   explicit CharacterTypeStorage(KindTy kind, CharacterType::LenType len)
       : kind{kind}, len{len} {}
-};
-
-struct ShapeShiftTypeStorage : public mlir::TypeStorage {
-  using KeyTy = unsigned;
-
-  static unsigned hashKey(const KeyTy &key) { return llvm::hash_combine(key); }
-
-  bool operator==(const KeyTy &key) const { return key == getRank(); }
-
-  static ShapeShiftTypeStorage *construct(mlir::TypeStorageAllocator &allocator,
-                                          unsigned rank) {
-    auto *storage = allocator.allocate<ShapeShiftTypeStorage>();
-    return new (storage) ShapeShiftTypeStorage{rank};
-  }
-
-  unsigned getRank() const { return rank; }
-
-protected:
-  unsigned rank;
-
-private:
-  ShapeShiftTypeStorage() = delete;
-  explicit ShapeShiftTypeStorage(unsigned rank) : rank{rank} {}
 };
 
 struct SliceTypeStorage : public mlir::TypeStorage {
@@ -1247,15 +1224,6 @@ llvm::hash_code fir::hash_value(const SequenceType::Shape &sh) {
   return llvm::hash_combine(0);
 }
 
-// Shapeshift
-
-ShapeShiftType fir::ShapeShiftType::get(mlir::MLIRContext *ctxt,
-                                        unsigned rank) {
-  return Base::get(ctxt, rank);
-}
-
-unsigned fir::ShapeShiftType::getRank() const { return getImpl()->getRank(); }
-
 // Slice
 
 SliceType fir::SliceType::get(mlir::MLIRContext *ctxt, unsigned rank) {
@@ -1451,7 +1419,7 @@ void fir::printFirType(FIROpsDialect *, mlir::Type ty,
     return;
   }
   if (auto type = ty.dyn_cast<ShapeShiftType>()) {
-    os << "shapeshift<" << type.getRank() << '>';
+    type.print(p);
     return;
   }
   if (auto type = ty.dyn_cast<SliceType>()) {
