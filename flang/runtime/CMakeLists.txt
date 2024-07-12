@@ -254,6 +254,7 @@ endif()
 
 if (NOT DEFINED MSVC)
   add_flang_library(FortranRuntime
+    PARTIAL_SOURCES_INTENDED
     ${sources}
     LINK_LIBS
     FortranDecimal
@@ -294,3 +295,17 @@ else()
     FortranRuntime.static_dbg FortranRuntime.dynamic_dbg)
 endif()
 set_target_properties(FortranRuntime PROPERTIES FOLDER "Flang/Runtime Libraries")
+
+if (FLANG_CUF_RUNTIME)
+  include_directories(${CUDAToolkit_INCLUDE_DIRS})
+  find_library(CUDA_RUNTIME_LIBRARY cuda HINTS ${CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES} REQUIRED)
+
+  add_flang_library(CufRuntime
+    PARTIAL_SOURCES_INTENDED
+    allocatable-cuf.cpp
+  )
+  target_link_libraries(CufRuntime
+    PRIVATE
+    ${CUDA_RUNTIME_LIBRARY}
+  )
+endif()
