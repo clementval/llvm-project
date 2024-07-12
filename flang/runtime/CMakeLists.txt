@@ -295,3 +295,7 @@ else()
     FortranRuntime.static_dbg FortranRuntime.dynamic_dbg)
 endif()
 set_target_properties(FortranRuntime PROPERTIES FOLDER "Flang/Runtime Libraries")
+
+if (FLANG_CUF_RUNTIME)
+  add_subdirectory(CUDA)
+endif()
