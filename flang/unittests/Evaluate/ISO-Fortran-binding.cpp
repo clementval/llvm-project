@@ -96,7 +96,7 @@ static void check_CFI_establish(CFI_cdesc_t *dv, void *base_addr,
     MATCH(rank, res->rank());
     MATCH(reinterpret_cast<std::intptr_t>(dv->base_addr),
         reinterpret_cast<std::intptr_t>(base_addr));
-    MATCH(true, dv->version == CFI_VERSION);
+    MATCH(true, (dv->version & CFI_VERSION_MASK) == CFI_VERSION);
     if (base_addr != nullptr) {
       MATCH(true, res->IsContiguous());
       for (int i{0}; i < rank; ++i) {

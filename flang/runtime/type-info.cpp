@@ -181,7 +181,7 @@ RT_OFFLOAD_API_GROUP_END
 
 static void DumpScalarCharacter(
     FILE *f, const Descriptor &desc, const char *what) {
-  if (desc.raw().version == CFI_VERSION &&
+  if ((desc.raw().version & CFI_VERSION_MASK) == CFI_VERSION &&
       desc.type() == TypeCode{TypeCategory::Character, 1} &&
       desc.ElementBytes() > 0 && desc.rank() == 0 &&
       desc.OffsetElement() != nullptr) {
@@ -234,7 +234,7 @@ FILE *DerivedType::Dump(FILE *f) const {
   bindingDesc.Dump(f);
   const Descriptor &compDesc{component()};
   std::fputs("\n  components:\n", f);
-  if (compDesc.raw().version == CFI_VERSION &&
+  if ((compDesc.raw().version & CFI_VERSION_MASK) == CFI_VERSION &&
       compDesc.type() == TypeCode{TypeCategory::Derived, 0} &&
       compDesc.ElementBytes() == sizeof(Component) && compDesc.rank() == 1) {
     std::size_t n{compDesc.Elements()};

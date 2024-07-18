@@ -39,7 +39,7 @@ RT_API_ATTRS int CFI_allocate(CFI_cdesc_t *descriptor,
   if (!descriptor) {
     return CFI_INVALID_DESCRIPTOR;
   }
-  if (descriptor->version != CFI_VERSION) {
+  if ((descriptor->version & CFI_VERSION_MASK) != CFI_VERSION) {
     return CFI_INVALID_DESCRIPTOR;
   }
   if (descriptor->attribute != CFI_attribute_allocatable &&
@@ -89,7 +89,7 @@ RT_API_ATTRS int CFI_deallocate(CFI_cdesc_t *descriptor) {
   if (!descriptor) {
     return CFI_INVALID_DESCRIPTOR;
   }
-  if (descriptor->version != CFI_VERSION) {
+  if ((descriptor->version & CFI_VERSION_MASK) != CFI_VERSION) {
     return CFI_INVALID_DESCRIPTOR;
   }
   if (descriptor->attribute == CFI_attribute_pointer) {

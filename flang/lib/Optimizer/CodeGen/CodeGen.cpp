@@ -1233,18 +1233,20 @@ struct EmboxCommonConversion : public fir::FIROpConversion<OP> {
         rewriter.create<mlir::LLVM::UndefOp>(loc, llvmBoxTy);
     descriptor =
         insertField(rewriter, loc, descriptor, {kElemLenPosInBox}, eleSize);
-    descriptor = insertField(rewriter, loc, descriptor, {kVersionPosInBox},
-                             this->genI32Constant(loc, rewriter, CFI_VERSION));
+    const bool hasAddendum = fir::boxHasAddendum(boxTy);
+    descriptor = insertField(
+        rewriter, loc, descriptor, {kVersionPosInBox},
+        this->genI32Constant(loc, rewriter,
+                             hasAddendum ? CFI_VERSION_ADDENDUM : CFI_VERSION));
     descriptor = insertField(rewriter, loc, descriptor, {kRankPosInBox},
                              this->genI32Constant(loc, rewriter, rank));
     descriptor = insertField(rewriter, loc, descriptor, {kTypePosInBox}, cfiTy);
     descriptor =
         insertField(rewriter, loc, descriptor, {kAttributePosInBox},
                     this->genI32Constant(loc, rewriter, getCFIAttr(boxTy)));
-    const bool hasAddendum = fir::boxHasAddendum(boxTy);
-    descriptor =
-        insertField(rewriter, loc, descriptor, {kF18AddendumPosInBox},
-                    this->genI32Constant(loc, rewriter, hasAddendum ? 1 : 0));
+    descriptor = insertField(
+        rewriter, loc, descriptor, {kAllocatorIdxPosInBox},
+        this->genI32Constant(loc, rewriter, 0 /*default allocator*/));
 
     if (hasAddendum) {
       unsigned typeDescFieldId = getTypeDescFieldId(boxTy);

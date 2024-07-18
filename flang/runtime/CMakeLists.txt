@@ -107,6 +107,7 @@ add_subdirectory(Float128Math)
 
 set(sources
   ISO_Fortran_binding.cpp
+  allocator-registry.cpp
   allocatable.cpp
   array-constructor.cpp
   assign.cpp

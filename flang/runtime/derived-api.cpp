@@ -76,10 +76,10 @@ bool RTDEF(ClassIs)(
 
 static RT_API_ATTRS bool CompareDerivedTypeNames(
     const Descriptor &a, const Descriptor &b) {
-  if (a.raw().version == CFI_VERSION &&
+  if ((a.raw().version & CFI_VERSION_MASK) == CFI_VERSION &&
       a.type() == TypeCode{TypeCategory::Character, 1} &&
       a.ElementBytes() > 0 && a.rank() == 0 && a.OffsetElement() != nullptr &&
-      a.raw().version == CFI_VERSION &&
+      (a.raw().version & CFI_VERSION_MASK) == CFI_VERSION &&
       b.type() == TypeCode{TypeCategory::Character, 1} &&
       b.ElementBytes() > 0 && b.rank() == 0 && b.OffsetElement() != nullptr &&
       a.ElementBytes() == b.ElementBytes() &&
