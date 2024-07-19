@@ -166,7 +166,7 @@ RT_API_ATTRS int Descriptor::Allocate() {
   // descriptor must be allocated/associated. Since std::malloc(0)
   // result is implementation defined, always allocate at least one byte.
   AllocFct alloc{allocatorRegistry.GetAllocator(raw_.allocator_idx)};
-  void *p{byteSize ? alloc(byteSize) : alloc(1)};
+  void *p{alloc(byteSize ? byteSize : 1)};
   if (!p) {
     return CFI_ERROR_MEM_ALLOCATION;
   }
@@ -295,7 +295,7 @@ void Descriptor::Dump(FILE *f) const {
   std::fprintf(f, "  rank      %d\n", static_cast<int>(raw_.rank));
   std::fprintf(f, "  type      %d\n", static_cast<int>(raw_.type));
   std::fprintf(f, "  attribute %d\n", static_cast<int>(raw_.attribute));
-  std::fprintf(f, "  addendum  %d\n", static_cast<int>(raw_.allocator_idx));
+  std::fprintf(f, "  alloc_idx %d\n", static_cast<int>(raw_.allocator_idx));
   for (int j{0}; j < raw_.rank; ++j) {
     std::fprintf(f, "  dim[%d] lower_bound %jd\n", j,
         static_cast<std::intmax_t>(raw_.dim[j].lower_bound));

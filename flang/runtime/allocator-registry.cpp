@@ -17,24 +17,23 @@ RT_VAR_ATTRS AllocatorRegistry allocatorRegistry;
 RT_OFFLOAD_VAR_GROUP_END
 #endif // FLANG_RUNTIME_NO_GLOBAL_VAR_DEFS
 
-void AllocatorRegistry::Register(int pos, AllocFct allocFct, FreeFct freeFct) {
+void AllocatorRegistry::Register(int pos, Allocator_t allocator) {
   // pos 0 is reserved for the default allocator and is register in the
   // struct ctor.
   INTERNAL_CHECK(pos > 0 && pos < MAX_ALLOCATOR);
-  allocators[pos] = allocFct;
-  deallocators[pos] = freeFct;
+  allocators[pos] = allocator;
 }
 
 AllocFct AllocatorRegistry::GetAllocator(int pos) {
   INTERNAL_CHECK(pos >= 0 && pos < MAX_ALLOCATOR);
-  AllocFct f = allocators[pos];
+  AllocFct f{allocators[pos].alloc};
   INTERNAL_CHECK(f != nullptr);
   return f;
 }
 
 FreeFct AllocatorRegistry::GetDeallocator(int pos) {
   INTERNAL_CHECK(pos >= 0 && pos < MAX_ALLOCATOR);
-  FreeFct f = deallocators[pos];
+  FreeFct f{allocators[pos].free};
   INTERNAL_CHECK(f != nullptr);
   return f;
 }

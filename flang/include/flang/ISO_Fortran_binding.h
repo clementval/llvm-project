@@ -30,12 +30,12 @@
 #endif
 
 /* 18.5.4 */
-#define CFI_VERSION 201805150
+#define CFI_VERSION 202407190
 /* CFI_VERSION_ADDENDUM has the same value than CFI_VERSION but le lsb set to 1
  * instead of 0. The lsb is used to mark the presence of the addendum in the
  * descriptor.
  */
-#define CFI_VERSION_ADDENDUM 201805151
+#define CFI_VERSION_ADDENDUM 202407191
 #define CFI_VERSION_MASK ~1
 
 #define CFI_MAX_RANK 15
@@ -152,8 +152,8 @@ extern "C++" template <typename T> struct FlexibleArray : T {
   CFI_rank_t rank; /* [0 .. CFI_MAX_RANK] */ \
   CFI_type_t type; \
   CFI_attribute_t attribute; \
-  /* index of the allocator used to allocate descriptor data. \
-   */ \
+  /* index of the allocator used to managed memory of the data hold by the \
+   * descriptor. */ \
   unsigned char allocator_idx;
 
 typedef struct CFI_cdesc_t {
@@ -163,6 +163,12 @@ typedef struct CFI_cdesc_t {
 #else
   CFI_dim_t dim[]; /* must appear last */
 #endif
+
+  inline bool HasAddendum() const { return version & 1; }
+
+  inline bool IsEqualVersion(int v) const {
+    return (version & CFI_VERSION_MASK) == v;
+  }
 } CFI_cdesc_t;
 
 /* 18.5.4 */

@@ -20,17 +20,18 @@ namespace Fortran::runtime {
 using AllocFct = void *(*)(std::size_t);
 using FreeFct = void (*)(void *);
 
+typedef struct Allocator_t {
+  AllocFct alloc = nullptr;
+  FreeFct free = nullptr;
+} Allocator_t;
+
 struct AllocatorRegistry {
-  constexpr AllocatorRegistry() {
-    allocators[0] = &std::malloc;
-    deallocators[0] = &std::free;
-  };
-  void Register(int, AllocFct, FreeFct);
+  constexpr AllocatorRegistry() { allocators[0] = {&std::malloc, &std::free}; };
+  void Register(int, Allocator_t);
   AllocFct GetAllocator(int pos);
   FreeFct GetDeallocator(int pos);
 
-  AllocFct allocators[MAX_ALLOCATOR] = {nullptr};
-  FreeFct deallocators[MAX_ALLOCATOR] = {nullptr};
+  Allocator_t allocators[MAX_ALLOCATOR];
 };
 
 RT_OFFLOAD_VAR_GROUP_BEGIN

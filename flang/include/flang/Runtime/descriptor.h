@@ -339,14 +339,14 @@ public:
       const SubscriptValue *, const int *permutation = nullptr) const;
 
   RT_API_ATTRS DescriptorAddendum *Addendum() {
-    if (raw_.version & 1) {
+    if (raw_.HasAddendum()) {
       return reinterpret_cast<DescriptorAddendum *>(&GetDimension(rank()));
     } else {
       return nullptr;
     }
   }
   RT_API_ATTRS const DescriptorAddendum *Addendum() const {
-    if (raw_.version & 1) {
+    if (raw_.HasAddendum()) {
       return reinterpret_cast<const DescriptorAddendum *>(
           &GetDimension(rank()));
     } else {

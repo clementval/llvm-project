@@ -181,7 +181,7 @@ RT_OFFLOAD_API_GROUP_END
 
 static void DumpScalarCharacter(
     FILE *f, const Descriptor &desc, const char *what) {
-  if ((desc.raw().version & CFI_VERSION_MASK) == CFI_VERSION &&
+  if (desc.raw().IsEqualVersion(CFI_VERSION) &&
       desc.type() == TypeCode{TypeCategory::Character, 1} &&
       desc.ElementBytes() > 0 && desc.rank() == 0 &&
       desc.OffsetElement() != nullptr) {
