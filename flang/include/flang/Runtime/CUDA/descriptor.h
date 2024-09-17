@@ -25,6 +25,15 @@ Descriptor *RTDECL(CUFAllocDesciptor)(
 void RTDECL(CUFFreeDesciptor)(
     Descriptor *, const char *sourceFile = nullptr, int sourceLine = 0);
 
+// Retrieve the device descriptor's pointer from the host one.
+Descriptor *RTDECL(CUFGetDeviceDescAddress)(
+    Descriptor &, const char *sourceFile = nullptr, int sourceLine = 0);
+
+// Sync descriptors between host and device.
+void RTDECL(CUFDescriptorSync)(Descriptor *dst, const Descriptor *src,
+    const char *sourceFile = nullptr, int sourceLine = 0);
+
 } // extern "C"
+
 } // namespace Fortran::runtime::cuda
 #endif // FORTRAN_RUNTIME_CUDA_DESCRIPTOR_H_
