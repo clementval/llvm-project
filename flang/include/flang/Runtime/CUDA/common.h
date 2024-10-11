@@ -23,11 +23,25 @@ static constexpr unsigned kHostToDevice = 0;
 static constexpr unsigned kDeviceToHost = 1;
 static constexpr unsigned kDeviceToDevice = 2;
 
+/// For use with the CUDA runtime API.
 #define CUDA_REPORT_IF_ERROR(expr) \
   [](cudaError_t err) { \
     if (err == cudaSuccess) \
       return; \
     const char *name = cudaGetErrorName(err); \
+    if (!name) \
+      name = "<unknown>"; \
+    Terminator terminator{__FILE__, __LINE__}; \
+    terminator.Crash("'%s' failed with '%s'", #expr, name); \
+  }(expr)
+
+/// For use with the CUDA driver API.
+#define CU_REPORT_IF_ERROR(expr) \
+  [](CUresult result) { \
+    if (result == CUDA_SUCCESS) \
+      return; \
+    const char *name = nullptr; \
+    cuGetErrorName(result, &name); \
     if (!name) \
       name = "<unknown>"; \
     Terminator terminator{__FILE__, __LINE__}; \

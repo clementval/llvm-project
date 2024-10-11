@@ -43,6 +43,9 @@ int main(int argc, char **argv) {
   DialectRegistry registry;
   fir::support::registerDialects(registry);
   fir::support::addFIRExtensions(registry);
+  registry.insert<mlir::gpu::GPUDialect>();
+  registry.insert<mlir::NVVM::NVVMDialect>();
+
   return failed(MlirOptMain(argc, argv, "FIR modular optimizer driver\n",
       registry));
 }

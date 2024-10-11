@@ -466,6 +466,7 @@ option(FLANG_CUF_RUNTIME
   "Compile CUDA Fortran runtime sources" OFF)
 if (FLANG_CUF_RUNTIME)
   find_package(CUDAToolkit REQUIRED)
+  add_compile_definitions(FLANG_ENABLE_CUF=1)
 endif()
 
 add_subdirectory(runtime)

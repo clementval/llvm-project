@@ -18,6 +18,8 @@ add_flang_library(${CUFRT_LIBNAME}
   allocatable.cpp
   descriptor.cpp
   memory.cpp
+  module-registry.cpp
+  registration.cpp
 )
 
 if (BUILD_SHARED_LIBS)
@@ -30,4 +32,5 @@ target_link_libraries(${CUFRT_LIBNAME}
   PRIVATE
   FortranRuntime
   ${CUDA_RT_TARGET}
+  CUDA::cuda_driver
 )
