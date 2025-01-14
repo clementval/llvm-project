@@ -450,4 +450,9 @@ def CUFGPUToLLVMConversion : Pass<"cuf-gpu-convert-to-llvm", "mlir::ModuleOp"> {
   ];
 }
 
+def CUFLegalizeRegion : Pass<"cuf-legalize-region"> {
+  let summary = "Legalize values in CUF regions";
+  let dependentDialects = ["cuf::CUFDialect"];
+}
+
 #endif // FLANG_OPTIMIZER_TRANSFORMS_PASSES
