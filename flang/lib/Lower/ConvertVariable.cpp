@@ -738,9 +738,11 @@ static mlir::Value createNewLocal(Fortran::lower::AbstractConverter &converter,
     auto idxTy = builder.getIndexType();
     for (mlir::Value sh : elidedShape)
       indices.push_back(builder.createConvert(loc, idxTy, sh));
-    mlir::Value alloc = builder.create<cuf::AllocOp>(
-        loc, ty, nm, symNm, dataAttr, lenParams, indices);
-    return alloc;
+    if (dataAttr.getValue() == cuf::DataAttribute::Shared)
+      return builder.create<cuf::SharedMemoryOp>(loc, ty, nm, symNm, lenParams,
+                                                 indices);
+    return builder.create<cuf::AllocOp>(loc, ty, nm, symNm, dataAttr, lenParams,
+                                        indices);
   }
 
   // Let the builder do all the heavy lifting.
