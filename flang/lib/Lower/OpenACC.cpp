@@ -3204,6 +3204,17 @@ genACCHostDataOp(Fortran::lower::AbstractConverter &converter,
           mlir::acc::DataClause::acc_use_device,
           /*structured=*/true, /*implicit=*/false, /*async=*/{},
           /*asyncDeviceTypes=*/{}, /*asyncOnlyDeviceTypes=*/{});
+        const Fortran::parser::AccObjectList &objectList{useDevice->v};
+        for (const auto &accObject : objectList.v) {
+          Fortran::semantics::Symbol &symbol = getSymbolFromAccObject(accObject);
+          if (auto *actualObject{symbol.GetUltimate().detailsIf<Fortran::semantics::ObjectEntityDetails>()}) {
+            if (!actualObject->cudaDataAttr()) {
+              // llvm::errs() << symbol.GetUltimate() << "\n";
+              llvm::errs() << "SET USE DEVICE\n";
+              actualObject->set_cudaDataAttr(Fortran::common::CUDADataAttr::AccUseDevice);
+            }
+          }
+        }
     } else if (std::get_if<Fortran::parser::AccClause::IfPresent>(&clause.u)) {
       addIfPresentAttr = true;
     }

@@ -1293,7 +1293,8 @@ inline bool IsCUDADeviceSymbol(const Symbol &sym) {
   if (const auto *details =
           sym.GetUltimate().detailsIf<semantics::ObjectEntityDetails>()) {
     if (details->cudaDataAttr() &&
-        *details->cudaDataAttr() != common::CUDADataAttr::Pinned) {
+        *details->cudaDataAttr() != common::CUDADataAttr::Pinned &&
+        *details->cudaDataAttr() != common::CUDADataAttr::AccUseDevice) {
       return true;
     }
   }

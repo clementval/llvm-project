@@ -70,6 +70,9 @@ getDataAttribute(mlir::MLIRContext *mlirContext,
     case Fortran::common::CUDADataAttr::Texture:
       // Obsolete attribute
       return {};
+    case Fortran::common::CUDADataAttr::AccUseDevice:
+      // Only used during generic resolution
+      return {};
     case Fortran::common::CUDADataAttr::Unified:
       attr = cuf::DataAttribute::Unified;
       break;

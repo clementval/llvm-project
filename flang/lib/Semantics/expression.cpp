@@ -2731,6 +2731,7 @@ static constexpr int cudaInfMatchingValue{std::numeric_limits<int>::max()};
 static int GetMatchingDistance(const common::LanguageFeatureControl &features,
     const characteristics::DummyArgument &dummy,
     const std::optional<ActualArgument> &actual) {
+  llvm::errs() << "MATCHING DISTANCE\n";
   bool isCudaManaged{features.IsEnabled(common::LanguageFeature::CudaManaged)};
   bool isCudaUnified{features.IsEnabled(common::LanguageFeature::CudaUnified)};
   CHECK(!(isCudaUnified && isCudaManaged) && "expect only one enabled.");
@@ -2739,13 +2740,18 @@ static int GetMatchingDistance(const common::LanguageFeatureControl &features,
   if (actual) {
     if (auto *expr{actual->UnwrapExpr()}) {
       const auto *actualLastSymbol{evaluate::GetLastSymbol(*expr)};
+      // llvm::errs() << *actualLastSymbol << "\n";
       if (actualLastSymbol) {
         actualLastSymbol = &semantics::ResolveAssociations(*actualLastSymbol);
         if (const auto *actualObject{actualLastSymbol
-                    ? actualLastSymbol
-                          ->detailsIf<semantics::ObjectEntityDetails>()
+                    ? actualLastSymbol->GetUltimate()
+                          .detailsIf<semantics::ObjectEntityDetails>()
                     : nullptr}) {
           actualDataAttr = actualObject->cudaDataAttr();
+          llvm::errs() << "ATTRIBUTE\n";
+          if (actualObject->cudaDataAttr() == Fortran::common::CUDADataAttr::AccUseDevice) {
+            llvm::errs() << "ACC USE DEVICE\n";
+          }
         }
       }
     }

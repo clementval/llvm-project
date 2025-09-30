@@ -2269,11 +2269,13 @@ static parser::Messages CheckExplicitInterface(
 bool CheckInterfaceForGeneric(const characteristics::Procedure &proc,
     evaluate::ActualArguments &actuals, SemanticsContext &context,
     bool allowActualArgumentConversions) {
-  return proc.HasExplicitInterface() &&
+  bool result = proc.HasExplicitInterface() &&
       !CheckExplicitInterface(proc, actuals, context, nullptr, nullptr,
           allowActualArgumentConversions, /*extentErrors=*/false,
           /*ignoreImplicitVsExplicit=*/false)
            .AnyFatalError();
+  llvm::errs() << "CheckInterfaceForGeneric: " << proc.HasExplicitInterface() << "\n";
+  return result;
 }
 
 bool CheckArgumentIsConstantExprInRange(
