@@ -591,16 +591,16 @@ static mlir::Value emboxSrc(mlir::PatternRewriter &rewriter,
 }
 
 // TODO
-static mlir::Value getDstDeviceAddress(fir::FirOpBuilder &builder,
-    cuf::DataTransferOp op, const mlir::SymbolTable &symtab) {
-  if (auto declOp = op.getDst().getDefiningOp<fir::DeclareOp>())
+static mlir::Value getDeviceAddress(fir::FirOpBuilder &builder,
+    mlir::Value val, const mlir::SymbolTable &symtab) {
+  if (auto declOp = val.getDefiningOp<fir::DeclareOp>())
     if (declOp.getDataAttr() && *declOp.getDataAttr() == cuf::DataAttribute::Constant)
       if (auto addrOfOp = declOp.getMemref().getDefiningOp<fir::AddrOfOp>())
         if (auto global = symtab.lookup<fir::GlobalOp>(
             addrOfOp.getSymbol().getRootReference().getValue()))
           return cuf::DeviceAddressOp::create(
                   builder, declOp.getLoc(), addrOfOp.getType(), addrOfOp.getSymbol());
-  return op.getDst();
+  return val;
 }
 
 static mlir::Value emboxDst(mlir::PatternRewriter &rewriter,
@@ -610,7 +610,7 @@ static mlir::Value emboxDst(mlir::PatternRewriter &rewriter,
   mlir::Location loc = op.getLoc();
   fir::FirOpBuilder builder(rewriter, mod);
   mlir::Type dstTy = fir::unwrapRefType(op.getDst().getType());
-  mlir::Value dstAddr = getDstDeviceAddress(builder, op, symtab);
+  mlir::Value dstAddr = getDeviceAddress(builder, op.getDst(), symtab);
   mlir::Type dstBoxTy = fir::BoxType::get(dstTy);
   llvm::SmallVector<mlir::Value> lenParams;
   mlir::Value dstBox =
@@ -621,8 +621,6 @@ static mlir::Value emboxDst(mlir::PatternRewriter &rewriter,
   fir::StoreOp::create(builder, loc, dstBox, dst);
   return dst;
 }
-
-
 
 struct CUFDataTransferOpConversion
     : public mlir::OpRewritePattern<cuf::DataTransferOp> {
@@ -733,8 +731,8 @@ struct CUFDataTransferOpConversion
       mlir::Value sourceLine =
           fir::factory::locationToLineNo(builder, loc, fTy.getInput(5));
 
-      mlir::Value dst = getDstDeviceAddress(builder, op, symtab);
-      mlir::Value src = op.getSrc();
+      mlir::Value dst = getDeviceAddress(builder, op.getDst(), symtab);
+      mlir::Value src = getDeviceAddress(builder, op.getSrc(), symtab);
       // Materialize the src if constant.
       if (matchPattern(src.getDefiningOp(), mlir::m_Constant())) {
         mlir::Value temp = builder.createTemporary(loc, srcTy);

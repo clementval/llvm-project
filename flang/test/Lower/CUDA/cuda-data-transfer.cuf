@@ -24,6 +24,7 @@ module mod1
 
   integer, constant :: const_int
   integer, constant :: const_int_array(10)
+  real(8), constant :: const_r8
 
 contains
   function dev1(a)
@@ -582,3 +583,10 @@ end subroutine
 ! CHECK: %[[CONST_INT_ARRAY:.*]] = fir.address_of(@_QMmod1Econst_int_array) : !fir.ref<!fir.array<10xi32>>
 ! CHECK: %[[CONST_INT_ARRAY_DECL:.*]]:2 = hlfir.declare %[[CONST_INT_ARRAY]](%{{.*}}) {data_attr = #cuf.cuda<constant>, uniq_name = "_QMmod1Econst_int_array"} : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>) -> (!fir.ref<!fir.array<10xi32>>, !fir.ref<!fir.array<10xi32>>)
 ! CHECK: cuf.data_transfer %c4{{.*}} to %[[CONST_INT_ARRAY_DECL]]#0 {transfer_kind = #cuf.cuda_transfer<host_device>} : i32, !fir.ref<!fir.array<10xi32>>
+
+! Check that there is no implicit data transfer for the constant value.
+subroutine sub32()
+  use mod1
+  real(8) :: a, b
+  a = const_r8 / b
+end subroutine

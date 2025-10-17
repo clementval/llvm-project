@@ -115,3 +115,32 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<128> :
 // CHECK: fir.do_loop
 // CHECK: fir.array_coor %[[CST_DECL:.*]](%{{.*}}) %{{.*}} : (!fir.ref<!fir.array<20xf32>>, !fir.shape<1>, index) -> !fir.ref<f32>
 
+// -----
+
+module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<128> : vector<2xi64>>, #dlti.dl_entry<i128, dense<128> : vector<2xi64>>, #dlti.dl_entry<i64, dense<64> : vector<2xi64>>, #dlti.dl_entry<!llvm.ptr<272>, dense<64> : vector<4xi64>>, #dlti.dl_entry<!llvm.ptr<271>, dense<32> : vector<4xi64>>, #dlti.dl_entry<!llvm.ptr<270>, dense<32> : vector<4xi64>>, #dlti.dl_entry<f128, dense<128> : vector<2xi64>>, #dlti.dl_entry<f64, dense<64> : vector<2xi64>>, #dlti.dl_entry<f16, dense<16> : vector<2xi64>>, #dlti.dl_entry<i32, dense<32> : vector<2xi64>>, #dlti.dl_entry<i16, dense<16> : vector<2xi64>>, #dlti.dl_entry<i8, dense<8> : vector<2xi64>>, #dlti.dl_entry<i1, dense<8> : vector<2xi64>>, #dlti.dl_entry<!llvm.ptr, dense<64> : vector<4xi64>>, #dlti.dl_entry<"dlti.endianness", "little">, #dlti.dl_entry<"dlti.stack_alignment", 128 : i64>>} {
+  fir.global @_QMmod1Econst_r8 {data_attr = #cuf.cuda<constant>} : f64 {
+    %0 = fir.zero_bits f64
+    fir.has_value %0 : f64
+  }
+  func.func @_QPsub32() {
+    %0 = fir.alloca f64 {bindc_name = ".tmp"}
+    %2 = fir.alloca f64 {bindc_name = "a", uniq_name = "_QFsub32Ea"}
+    %3 = fir.declare %2 {uniq_name = "_QFsub32Ea"} : (!fir.ref<f64>) -> (!fir.ref<f64>)
+    %4 = fir.alloca f64 {bindc_name = "b", uniq_name = "_QFsub32Eb"}
+    %5 = fir.declare %4 {uniq_name = "_QFsub32Eb"} : (!fir.ref<f64>) -> (!fir.ref<f64>)
+    %6 = fir.address_of(@_QMmod1Ecdev) : !fir.ref<!fir.array<10xi32>>
+    %c11 = arith.constant 11 : index
+    %c10 = arith.constant 10 : index
+    %7 = fir.shape_shift %c11, %c10 : (index, index) -> !fir.shapeshift<1>
+    %14 = fir.address_of(@_QMmod1Econst_r8) : !fir.ref<f64>
+    %15 = fir.declare %14 {data_attr = #cuf.cuda<constant>, uniq_name = "_QMmod1Econst_r8"} : (!fir.ref<f64>) -> (!fir.ref<f64>)
+    %18 = fir.declare %0 {uniq_name = ".tmp"} : (!fir.ref<f64>) -> (!fir.ref<f64>)
+    %19 = fir.declare %18 {data_attr = #cuf.cuda<constant>, uniq_name = "_QMmod1Econst_r8"} : (!fir.ref<f64>) -> (!fir.ref<f64>)
+    cuf.data_transfer %15 to %18 {transfer_kind = #cuf.cuda_transfer<device_host>} : !fir.ref<f64>, !fir.ref<f64>
+    %20 = fir.load %19 : !fir.ref<f64>
+    %21 = fir.load %5 : !fir.ref<f64>
+    %22 = arith.divf %20, %21 fastmath<contract> : f64
+    hlfir.assign %22 to %3 : f64, !fir.ref<f64>
+    return
+  }
+}
