@@ -590,6 +590,19 @@ static mlir::Value emboxSrc(mlir::PatternRewriter &rewriter,
   return src;
 }
 
+// TODO
+static mlir::Value getDstDeviceAddress(fir::FirOpBuilder &builder,
+    cuf::DataTransferOp op, const mlir::SymbolTable &symtab) {
+  if (auto declOp = op.getDst().getDefiningOp<fir::DeclareOp>())
+    if (declOp.getDataAttr() && *declOp.getDataAttr() == cuf::DataAttribute::Constant)
+      if (auto addrOfOp = declOp.getMemref().getDefiningOp<fir::AddrOfOp>())
+        if (auto global = symtab.lookup<fir::GlobalOp>(
+            addrOfOp.getSymbol().getRootReference().getValue()))
+          return cuf::DeviceAddressOp::create(
+                  builder, declOp.getLoc(), addrOfOp.getType(), addrOfOp.getSymbol());
+  return op.getDst();
+}
+
 static mlir::Value emboxDst(mlir::PatternRewriter &rewriter,
                             cuf::DataTransferOp op,
                             const mlir::SymbolTable &symtab) {
@@ -597,7 +610,7 @@ static mlir::Value emboxDst(mlir::PatternRewriter &rewriter,
   mlir::Location loc = op.getLoc();
   fir::FirOpBuilder builder(rewriter, mod);
   mlir::Type dstTy = fir::unwrapRefType(op.getDst().getType());
-  mlir::Value dstAddr = op.getDst();
+  mlir::Value dstAddr = getDstDeviceAddress(builder, op, symtab);
   mlir::Type dstBoxTy = fir::BoxType::get(dstTy);
   llvm::SmallVector<mlir::Value> lenParams;
   mlir::Value dstBox =
@@ -608,6 +621,8 @@ static mlir::Value emboxDst(mlir::PatternRewriter &rewriter,
   fir::StoreOp::create(builder, loc, dstBox, dst);
   return dst;
 }
+
+
 
 struct CUFDataTransferOpConversion
     : public mlir::OpRewritePattern<cuf::DataTransferOp> {
@@ -718,7 +733,7 @@ struct CUFDataTransferOpConversion
       mlir::Value sourceLine =
           fir::factory::locationToLineNo(builder, loc, fTy.getInput(5));
 
-      mlir::Value dst = op.getDst();
+      mlir::Value dst = getDstDeviceAddress(builder, op, symtab);
       mlir::Value src = op.getSrc();
       // Materialize the src if constant.
       if (matchPattern(src.getDefiningOp(), mlir::m_Constant())) {
@@ -969,6 +984,8 @@ public:
         if (auto global = symtab.lookup<fir::GlobalOp>(
                 addrOfOp.getSymbol().getRootReference().getValue())) {
           if (mlir::isa<fir::BaseBoxType>(fir::unwrapRefType(global.getType())))
+            return true;
+          if (global.getDataAttr() && *global.getDataAttr() == cuf::DataAttribute::Constant)
             return true;
           if (cuf::isRegisteredDeviceGlobal(global))
             return false;

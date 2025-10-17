@@ -22,6 +22,9 @@ module mod1
     end function
   end interface
 
+  integer, constant :: const_int
+  integer, constant :: const_int_array(10)
+
 contains
   function dev1(a)
     integer, device :: a(:)
@@ -477,7 +480,7 @@ subroutine sub25()
 end
 
 ! CHECK-LABEL: func.func @_QPsub25()
-! CHECK: fir.allocmem !fir.array<?xf64>, %15#1 {bindc_name = ".tmp", uniq_name = ""}
+! CHECK: fir.allocmem !fir.array<?xf64>, %{{.*}}#1 {bindc_name = ".tmp", uniq_name = ""}
 ! CHECK: cuf.data_transfer %{{.*}} to %{{.*}} {transfer_kind = #cuf.cuda_transfer<device_host>} : !fir.ref<!fir.box<!fir.heap<!fir.array<?xf64>>>>, !fir.box<!fir.array<?xf64>>
 ! CHECK: hlfir.assign %{{.*}} to %{{.*}} : f64, !fir.ref<f64>
 ! CHECK: fir.freemem %{{.*}} : !fir.heap<!fir.array<?xf64>>
@@ -559,3 +562,23 @@ end subroutine
 ! CHECK: %[[TMP_BUFFER:.*]]:2 = hlfir.declare %[[TMP]](%{{.*}}) {uniq_name = ".tmp"} : (!fir.heap<!fir.array<?xf16>>, !fir.shape<1>) -> (!fir.box<!fir.array<?xf16>>, !fir.heap<!fir.array<?xf16>>)
 ! CHECK: cuf.data_transfer %{{.*}} to %[[TMP_BUFFER]]#0 {transfer_kind = #cuf.cuda_transfer<device_host>} : !fir.box<!fir.heap<!fir.array<?xf16>>>, !fir.box<!fir.array<?xf16>>
 ! CHECK: hlfir.elemental 
+
+subroutine sub30()
+  use mod1
+  const_int = 4 ! Update const from host
+end subroutine
+
+! CHECK-LABEL: func.func @_QPsub30()
+! CHECK: %[[CONST_INT:.*]] = fir.address_of(@_QMmod1Econst_int) : !fir.ref<i32>
+! CHECK: %[[CONST_INT_DECL:.*]]:2 = hlfir.declare %[[CONST_INT]] {data_attr = #cuf.cuda<constant>, uniq_name = "_QMmod1Econst_int"} : (!fir.ref<i32>) -> (!fir.ref<i32>, !fir.ref<i32>)
+! CHECK: cuf.data_transfer %c4_i32 to %[[CONST_INT_DECL]]#0 {transfer_kind = #cuf.cuda_transfer<host_device>} : i32, !fir.ref<i32>
+   
+subroutine sub31()
+  use mod1
+  const_int_array = 4 ! Update const from host
+end subroutine
+
+! CHECK-LABEL: func.func @_QPsub31()
+! CHECK: %[[CONST_INT_ARRAY:.*]] = fir.address_of(@_QMmod1Econst_int_array) : !fir.ref<!fir.array<10xi32>>
+! CHECK: %[[CONST_INT_ARRAY_DECL:.*]]:2 = hlfir.declare %[[CONST_INT_ARRAY]](%{{.*}}) {data_attr = #cuf.cuda<constant>, uniq_name = "_QMmod1Econst_int_array"} : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>) -> (!fir.ref<!fir.array<10xi32>>, !fir.ref<!fir.array<10xi32>>)
+! CHECK: cuf.data_transfer %c4{{.*}} to %[[CONST_INT_ARRAY_DECL]]#0 {transfer_kind = #cuf.cuda_transfer<host_device>} : i32, !fir.ref<!fir.array<10xi32>>
