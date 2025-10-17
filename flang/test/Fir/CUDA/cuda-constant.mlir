@@ -117,6 +117,8 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<128> :
 
 // -----
 
+// Check implicit data transfer of a constant.
+
 module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<128> : vector<2xi64>>, #dlti.dl_entry<i128, dense<128> : vector<2xi64>>, #dlti.dl_entry<i64, dense<64> : vector<2xi64>>, #dlti.dl_entry<!llvm.ptr<272>, dense<64> : vector<4xi64>>, #dlti.dl_entry<!llvm.ptr<271>, dense<32> : vector<4xi64>>, #dlti.dl_entry<!llvm.ptr<270>, dense<32> : vector<4xi64>>, #dlti.dl_entry<f128, dense<128> : vector<2xi64>>, #dlti.dl_entry<f64, dense<64> : vector<2xi64>>, #dlti.dl_entry<f16, dense<16> : vector<2xi64>>, #dlti.dl_entry<i32, dense<32> : vector<2xi64>>, #dlti.dl_entry<i16, dense<16> : vector<2xi64>>, #dlti.dl_entry<i8, dense<8> : vector<2xi64>>, #dlti.dl_entry<i1, dense<8> : vector<2xi64>>, #dlti.dl_entry<!llvm.ptr, dense<64> : vector<4xi64>>, #dlti.dl_entry<"dlti.endianness", "little">, #dlti.dl_entry<"dlti.stack_alignment", 128 : i64>>} {
   fir.global @_QMmod1Econst_r8 {data_attr = #cuf.cuda<constant>} : f64 {
     %0 = fir.zero_bits f64
@@ -144,3 +146,14 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<128> :
     return
   }
 }
+
+// CHECK-LABEL: func.func @_QPsub32()
+// CHECK: %[[TMP:.*]] = fir.alloca f64 {bindc_name = ".tmp"}
+// CHECK: %[[TMP_DECL:.*]] = fir.declare %[[TMP]] {uniq_name = ".tmp"} : (!fir.ref<f64>) -> !fir.ref<f64>
+// CHECK: %[[ADDR:.*]] = fir.address_of(@_QMmod1Econst_r8) : !fir.ref<f64>
+// CHECK: %[[ADDR_CONV:.*]] = fir.convert %[[ADDR]] : (!fir.ref<f64>) -> !fir.llvm_ptr<i8>
+// CHECK: %[[DEV_ADDR:.*]] = fir.call @_FortranACUFGetDeviceAddress(%[[ADDR_CONV]], %{{.*}}, %{{.*}}) : (!fir.llvm_ptr<i8>, !fir.ref<i8>, i32) -> !fir.llvm_ptr<i8>
+// CHECK: %[[DEV_ADDR_CONV:.*]] = fir.convert %[[DEV_ADDR]] : (!fir.llvm_ptr<i8>) -> !fir.ref<f64>
+// CHECK: %[[TMP_DECL_CONV:.*]] = fir.convert %[[TMP_DECL]] : (!fir.ref<f64>) -> !fir.llvm_ptr<i8>
+// CHECK: %[[SRC:.*]] = fir.convert %[[DEV_ADDR_CONV]] : (!fir.ref<f64>) -> !fir.llvm_ptr<i8>
+// CHECK: fir.call @_FortranACUFDataTransferPtrPtr(%[[TMP_DECL_CONV]], %[[SRC]], %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : (!fir.llvm_ptr<i8>, !fir.llvm_ptr<i8>, i64, i32, !fir.ref<i8>, i32) -> ()
