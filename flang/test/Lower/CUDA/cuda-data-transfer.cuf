@@ -577,6 +577,7 @@ end subroutine
 subroutine sub31()
   use mod1
   const_int_array = 4 ! Update const from host
+  const_int_array(2:4) = 5
 end subroutine
 
 ! CHECK-LABEL: func.func @_QPsub31()
@@ -590,3 +591,6 @@ subroutine sub32()
   real(8) :: a, b
   a = const_r8 / b
 end subroutine
+
+
+

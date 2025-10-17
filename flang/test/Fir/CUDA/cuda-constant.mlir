@@ -41,6 +41,13 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<f80, dense<128> :
     %8 = fir.declare %6(%7) {data_attr = #cuf.cuda<constant>, uniq_name = "_QMmod1Econst_int_array"} : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>) -> (!fir.ref<!fir.array<10xi32>>)
     %c4_i32 = arith.constant 4 : i32
     cuf.data_transfer %c4_i32 to %8 {transfer_kind = #cuf.cuda_transfer<host_device>} : i32, !fir.ref<!fir.array<10xi32>>
+    %c2 = arith.constant 2 : index
+    %c3 = arith.constant 3 : index
+    %14 = fir.shape %c3 : (index) -> !fir.shape<1>
+    %15 = fir.array_coor %8(%14) %c2 : (!fir.ref<!fir.array<10xi32>>, !fir.shape<1>, index) -> !fir.ref<i32>
+    %16 = fir.convert %15 : (!fir.ref<i32>) -> !fir.ref<!fir.array<3xi32>>
+    %c5_i32 = arith.constant 5 : i32
+    cuf.data_transfer %c5_i32 to %16 {transfer_kind = #cuf.cuda_transfer<host_device>} : i32, !fir.ref<!fir.array<3xi32>>
     return
   }
 }

@@ -593,13 +593,23 @@ static mlir::Value emboxSrc(mlir::PatternRewriter &rewriter,
 // TODO
 static mlir::Value getDeviceAddress(fir::FirOpBuilder &builder,
     mlir::Value val, const mlir::SymbolTable &symtab) {
+  if (auto convertOp = val.getDefiningOp<fir::ConvertOp>())
+    if (auto arrayCoorOp = convertOp.getValue().getDefiningOp<fir::ArrayCoorOp>())
+      if (auto declOp = arrayCoorOp.getMemref().getDefiningOp<fir::DeclareOp>())
+        if (declOp.getDataAttr() && *declOp.getDataAttr() == cuf::DataAttribute::Constant)
+          if (auto addrOfOp = declOp.getMemref().getDefiningOp<fir::AddrOfOp>()) {
+            mlir::OpBuilder::InsertionGuard guard(builder);
+            builder.setInsertionPoint(arrayCoorOp);
+            mlir::Value devAddr = cuf::DeviceAddressOp::create(
+                  builder, addrOfOp.getLoc(), addrOfOp.getType(), addrOfOp.getSymbol());
+            arrayCoorOp.getMemrefMutable().assign(devAddr);
+            return devAddr;
+          }
   if (auto declOp = val.getDefiningOp<fir::DeclareOp>())
     if (declOp.getDataAttr() && *declOp.getDataAttr() == cuf::DataAttribute::Constant)
       if (auto addrOfOp = declOp.getMemref().getDefiningOp<fir::AddrOfOp>())
-        if (auto global = symtab.lookup<fir::GlobalOp>(
-            addrOfOp.getSymbol().getRootReference().getValue()))
           return cuf::DeviceAddressOp::create(
-                  builder, declOp.getLoc(), addrOfOp.getType(), addrOfOp.getSymbol());
+                  builder, addrOfOp.getLoc(), addrOfOp.getType(), addrOfOp.getSymbol());
   return val;
 }
 
