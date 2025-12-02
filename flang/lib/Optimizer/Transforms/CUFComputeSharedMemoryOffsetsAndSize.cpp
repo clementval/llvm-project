@@ -115,12 +115,15 @@ struct CUFComputeSharedMemoryOffsetsAndSize
 
 
         // Static shared memory
+        mlir::Value zero = builder.createIntegerConstant(loc, i32Ty, 0);
+        sharedOp.getOffsetMutable().assign(zero);
         auto [size, align] = fir::getTypeSizeAndAlignmentOrCrash(
             sharedOp.getLoc(), sharedOp.getInType(), *dl, kindMap);
         std::string sharedMemGlobalName =
             (funcOp.getName() + llvm::Twine(cudaSharedMemSuffix) + *sharedOp.getBindcName()).str();
         
         mlir::StringAttr linkage = builder.createInternalLinkage();
+        mlir::OpBuilder::InsertionGuard guard(builder);
         builder.setInsertionPointToEnd(gpuMod.getBody());
         llvm::SmallVector<mlir::NamedAttribute> attrs;
         auto globalOpName = mlir::OperationName(fir::GlobalOp::getOperationName(),
@@ -142,8 +145,6 @@ struct CUFComputeSharedMemoryOffsetsAndSize
         
         sharedMem.setAlignment(align);
         ++nbStaticSharedVariables;
-        mlir::Value zero = builder.createIntegerConstant(loc, i32Ty, 0);
-        sharedOp.getOffsetMutable().assign(zero);
       }
 
       if (nbDynamicSharedVariables == 0 && nbStaticSharedVariables == 0)
