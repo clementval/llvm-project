@@ -250,7 +250,7 @@ struct CUFSharedMemoryOpConversion
 
     auto gpuMod = op->getParentOfType<gpu::GPUModuleOp>();
     std::string sharedGlobalName =
-        (getFuncName(op) + llvm::Twine(cudaSharedMemSuffix)).str();
+        (getFuncName(op) + llvm::Twine(cudaSharedMemSuffix) + *op.getBindcName()).str();
     mlir::Value sharedGlobalAddr =
         createAddressOfOp(rewriter, loc, gpuMod, sharedGlobalName);
 

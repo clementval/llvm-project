@@ -6,10 +6,11 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<!llvm.ptr, dense<
       %c0 = arith.constant 0 : i32
       %0 = cuf.shared_memory [%c0 : i32] i32 {bindc_name = "a", uniq_name = "_QFshared_staticEa"} -> !fir.ref<i32>
       %c4 = arith.constant 4 : i32
-      %1 = cuf.shared_memory [%c4 : i32] i32 {bindc_name = "b", uniq_name = "_QFshared_staticEb"} -> !fir.ref<i32>
+      %1 = cuf.shared_memory [%c0 : i32] i32 {bindc_name = "b", uniq_name = "_QFshared_staticEb"} -> !fir.ref<i32>
       llvm.return
     }
-    llvm.mlir.global common @_QPshared_static__shared_mem(dense<0> : vector<28xi8>) {addr_space = 3 : i32, alignment = 8 : i64} : !llvm.array<28 x i8>
+    llvm.mlir.global common @_QPshared_static__shared_mem_a(dense<0> : vector<16xi8>) {addr_space = 3 : i32, alignment = 8 : i64} : !llvm.array<28 x i8>
+    llvm.mlir.global common @_QPshared_static__shared_mem_b(dense<0> : vector<16xi8>) {addr_space = 3 : i32, alignment = 8 : i64} : !llvm.array<28 x i8>
   }
 }
 

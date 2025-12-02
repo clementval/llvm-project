@@ -79,6 +79,7 @@ struct CUFComputeSharedMemoryOffsetsAndSize
       // the size and alignment of the global to be generated if all variables
       // are static. If this is dynamic shared memory, then only the alignment
       // is computed.
+      
       for (auto sharedOp : funcOp.getOps<cuf::SharedMemoryOp>()) {
         mlir::Location loc = sharedOp.getLoc();
         builder.setInsertionPoint(sharedOp);
@@ -111,15 +112,38 @@ struct CUFComputeSharedMemoryOffsetsAndSize
 
           continue;
         }
+
+
+        // Static shared memory
         auto [size, align] = fir::getTypeSizeAndAlignmentOrCrash(
             sharedOp.getLoc(), sharedOp.getInType(), *dl, kindMap);
+        std::string sharedMemGlobalName =
+            (funcOp.getName() + llvm::Twine(cudaSharedMemSuffix) + *sharedOp.getBindcName()).str();
+        
+        mlir::StringAttr linkage = builder.createInternalLinkage();
+        builder.setInsertionPointToEnd(gpuMod.getBody());
+        llvm::SmallVector<mlir::NamedAttribute> attrs;
+        auto globalOpName = mlir::OperationName(fir::GlobalOp::getOperationName(),
+                                                gpuMod.getContext());
+        attrs.push_back(mlir::NamedAttribute(
+            fir::GlobalOp::getDataAttrAttrName(globalOpName),
+            cuf::DataAttributeAttr::get(gpuMod.getContext(),
+                                        cuf::DataAttribute::Shared)));
+
+        mlir::DenseElementsAttr init = {};
+        if (size > 0) {
+          auto vecTy = mlir::VectorType::get(static_cast<fir::SequenceType::Extent>(size), i8Ty);
+          mlir::Attribute zero = mlir::IntegerAttr::get(i8Ty, 0);
+          init = mlir::DenseElementsAttr::get(vecTy, llvm::ArrayRef(zero));
+        }
+        auto sharedMem = fir::GlobalOp::create(
+            builder, funcOp.getLoc(), sharedMemGlobalName, false, false,
+            sharedOp.getInType(), init, linkage, attrs);
+        
+        sharedMem.setAlignment(align);
         ++nbStaticSharedVariables;
-        mlir::Value offset = builder.createIntegerConstant(
-            loc, i32Ty, llvm::alignTo(sharedMemSize, align));
-        sharedOp.getOffsetMutable().assign(offset);
-        sharedMemSize =
-            llvm::alignTo(sharedMemSize, align) + llvm::alignTo(size, align);
-        alignment = std::max(alignment, align);
+        mlir::Value zero = builder.createIntegerConstant(loc, i32Ty, 0);
+        sharedOp.getOffsetMutable().assign(zero);
       }
 
       if (nbDynamicSharedVariables == 0 && nbStaticSharedVariables == 0)
@@ -130,6 +154,10 @@ struct CUFComputeSharedMemoryOffsetsAndSize
             funcOp.getLoc(),
             "static and dynamic shared variables in a single kernel");
 
+
+      if (nbDynamicSharedVariables > 0)
+        continue;
+      
       mlir::DenseElementsAttr init = {};
       if (sharedMemSize > 0) {
         auto vecTy = mlir::VectorType::get(sharedMemSize, i8Ty);
