@@ -139,9 +139,10 @@ struct CUFComputeSharedMemoryOffsetsAndSize
           mlir::Attribute zero = mlir::IntegerAttr::get(i8Ty, 0);
           init = mlir::DenseElementsAttr::get(vecTy, llvm::ArrayRef(zero));
         }
+        auto sharedMemType = fir::SequenceType::get(size, i8Ty);
         auto sharedMem = fir::GlobalOp::create(
             builder, funcOp.getLoc(), sharedMemGlobalName, false, false,
-            sharedOp.getInType(), init, linkage, attrs);
+            sharedMemType, init, linkage, attrs);
         
         sharedMem.setAlignment(align);
         ++nbStaticSharedVariables;
