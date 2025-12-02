@@ -155,7 +155,7 @@ struct CUFComputeSharedMemoryOffsetsAndSize
             "static and dynamic shared variables in a single kernel");
 
 
-      if (nbDynamicSharedVariables > 0)
+      if (nbStaticSharedVariables > 0)
         continue;
       
       mlir::DenseElementsAttr init = {};
