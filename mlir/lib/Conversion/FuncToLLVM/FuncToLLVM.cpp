@@ -578,8 +578,10 @@ class FuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
 
 public:
   explicit FuncOpConversion(const LLVMTypeConverter &converter,
-                            SymbolTableCollection *symbolTables = nullptr)
-      : ConvertOpToLLVMPattern(converter), symbolTables(symbolTables) {}
+                            SymbolTableCollection *symbolTables = nullptr,
+                            PatternBenefit benefit = 1)
+      : ConvertOpToLLVMPattern(converter, benefit),
+        symbolTables(symbolTables) {}
 
   LogicalResult
   matchAndRewrite(func::FuncOp funcOp, OpAdaptor adaptor,
@@ -878,18 +880,18 @@ struct ReturnOpLowering : public ConvertOpToLLVMPattern<func::ReturnOp> {
 
 void mlir::populateFuncToLLVMFuncOpConversionPattern(
     const LLVMTypeConverter &converter, RewritePatternSet &patterns,
-    SymbolTableCollection *symbolTables) {
-  patterns.add<FuncOpConversion>(converter, symbolTables);
+    SymbolTableCollection *symbolTables, mlir::PatternBenefit benefit) {
+  patterns.add<FuncOpConversion>(converter, symbolTables, benefit);
 }
 
 void mlir::populateFuncToLLVMConversionPatterns(
     const LLVMTypeConverter &converter, RewritePatternSet &patterns,
-    SymbolTableCollection *symbolTables) {
+    SymbolTableCollection *symbolTables, mlir::PatternBenefit benefit) {
   populateFuncToLLVMFuncOpConversionPattern(converter, patterns, symbolTables);
-  patterns.add<CallIndirectOpLowering>(converter);
-  patterns.add<CallOpLowering>(converter, symbolTables);
-  patterns.add<ConstantOpLowering>(converter);
-  patterns.add<ReturnOpLowering>(converter);
+  patterns.add<CallIndirectOpLowering>(converter, benefit);
+  patterns.add<CallOpLowering>(converter, symbolTables, benefit);
+  patterns.add<ConstantOpLowering>(converter, benefit);
+  patterns.add<ReturnOpLowering>(converter, benefit);
 }
 
 namespace {

@@ -15,6 +15,7 @@
 #define MLIR_CONVERSION_FUNCTOLLVM_CONVERTFUNCTOLLVM_H
 
 #include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
 
@@ -43,7 +44,8 @@ convertFuncOpToLLVMFuncOp(FunctionOpInterface funcOp,
 /// default unpacked form.
 void populateFuncToLLVMFuncOpConversionPattern(
     const LLVMTypeConverter &converter, RewritePatternSet &patterns,
-    SymbolTableCollection *symbolTables = nullptr);
+    SymbolTableCollection *symbolTables = nullptr,
+    mlir::PatternBenefit benefit = 1);
 
 /// Collect the patterns to convert from the Func dialect to LLVM. The
 /// conversion patterns capture the LLVMTypeConverter and the LowerToLLVMOptions
@@ -60,7 +62,8 @@ void populateFuncToLLVMFuncOpConversionPattern(
 /// not an error to provide it anyway.
 void populateFuncToLLVMConversionPatterns(
     const LLVMTypeConverter &converter, RewritePatternSet &patterns,
-    SymbolTableCollection *symbolTables = nullptr);
+    SymbolTableCollection *symbolTables = nullptr,
+    mlir::PatternBenefit benefit = 1);
 
 void registerConvertFuncToLLVMInterface(DialectRegistry &registry);
 
