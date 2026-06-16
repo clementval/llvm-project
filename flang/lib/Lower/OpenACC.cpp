@@ -771,6 +771,12 @@ genDataOperandOperations(const Fortran::parser::AccObjectList &objectList,
             /*strideIncludeLowerExtent=*/strideIncludeLowerExtent,
             /*loadAllocatableAndPointerComponent=*/false);
     LLVM_DEBUG(llvm::dbgs() << __func__ << "\n"; info.dump(llvm::dbgs()));
+    LLVM_DEBUG(llvm::dbgs()
+               << "ACC lower data operand: op=" << Op::getOperationName()
+               << " symbol=" << symbol.name().ToString()
+               << " clause=" << static_cast<int>(dataClause)
+               << " implicit=" << implicit << " structured=" << structured
+               << " isPresent=" << info.isPresent << "\n");
 
     // If the input value is optional and is not a descriptor, we use the
     // rawInput directly.
@@ -2846,6 +2852,14 @@ static Op createComputeOp(
   addOperands(operands, operandSegments, privateOperands);
   addOperands(operands, operandSegments, firstprivateOperands);
   addOperands(operands, operandSegments, dataClauseOperands);
+  LLVM_DEBUG(llvm::dbgs()
+             << "ACC lower create compute op: op=" << Op::getOperationName()
+             << " dataOps=" << dataClauseOperands.size()
+             << " privateOps=" << privateOperands.size()
+             << " firstprivateOps=" << firstprivateOperands.size()
+             << " reductionOps=" << reductionOperands.size()
+             << " hasDefaultNone=" << hasDefaultNone
+             << " hasDefaultPresent=" << hasDefaultPresent << "\n");
 
   Op computeOp;
   if constexpr (std::is_same_v<Op, mlir::acc::KernelsOp>)
@@ -3089,6 +3103,11 @@ static void genACCDataOp(Fortran::lower::AbstractConverter &converter,
   addOperands(operands, operandSegments, async);
   addOperands(operands, operandSegments, waitOperands);
   addOperands(operands, operandSegments, dataClauseOperands);
+  LLVM_DEBUG(llvm::dbgs()
+             << "ACC lower create data op: dataOps="
+             << dataClauseOperands.size() << " hasDefaultNone="
+             << hasDefaultNone << " hasDefaultPresent=" << hasDefaultPresent
+             << "\n");
 
   if (dataClauseOperands.empty() && !hasDefaultNone && !hasDefaultPresent &&
       !eval.lowerAsUnstructured())

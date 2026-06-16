@@ -456,37 +456,42 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
   bool isAnyAggregate = acc::bitEnumContainsAny(
       typeCategory, acc::VariableTypeCategory::aggregate);
   Location loc = computeConstructOp->getLoc();
+  std::optional<mlir::StringRef> varName = accSupport.getVariableName(var);
 
   if (acc::isDeviceValue(var)) {
     // If the variable is device data, use deviceptr clause.
-    LLVM_DEBUG(llvm::dbgs() << "Using deviceptr clause because variable is "
-                               "device data\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "Implicit data: var=" << (varName ? *varName : "<unnamed>")
+               << ", isDevice=true -> acc.deviceptr\n");
     return acc::DevicePtrOp::create(builder, loc, var,
                                     /*structured=*/true, /*implicit=*/true,
-                                    accSupport.getVariableName(var));
+                                    varName);
   }
 
   Operation *op = nullptr;
   op = getOriginalDataClauseOpForAlias(var, builder, computeConstructOp,
                                        dominatingDataClauses);
   if (op) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Implicit data: var=" << (varName ? *varName : "<unnamed>")
+               << ", reusing dominating clause " << op->getName() << "\n");
     if (isa<acc::NoCreateOp>(op))
       return acc::NoCreateOp::create(builder, loc, var,
                                      /*structured=*/true, /*implicit=*/true,
-                                     accSupport.getVariableName(var),
+                                     varName,
                                      acc::getBounds(op));
 
     if (isa<acc::DevicePtrOp>(op))
       return acc::DevicePtrOp::create(builder, loc, var,
                                       /*structured=*/true, /*implicit=*/true,
-                                      accSupport.getVariableName(var),
+                                      varName,
                                       acc::getBounds(op));
 
     // The original data clause op is a PresentOp, CopyinOp, or CreateOp,
     // hence guaranteed to be present.
     return acc::PresentOp::create(builder, loc, var,
                                   /*structured=*/true, /*implicit=*/true,
-                                  accSupport.getVariableName(var),
+                                  varName,
                                   acc::getBounds(op));
   }
 
@@ -494,10 +499,14 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
     if (enableImplicitReductionCopy &&
         acc::isOnlyUsedByReductionClauses(var,
                                           computeConstructOp->getRegion(0))) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Implicit data: var="
+                 << (varName ? *varName : "<unnamed>")
+                 << ", scalar reduction-only -> acc.copyin(reduction)\n");
       auto copyinOp =
           acc::CopyinOp::create(builder, loc, var,
                                 /*structured=*/true, /*implicit=*/true,
-                                accSupport.getVariableName(var));
+                                varName);
       copyinOp.setDataClause(acc::DataClause::acc_reduction);
       return copyinOp.getOperation();
     }
@@ -509,17 +518,25 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
       // and at this point we should only be dealing with unmapped variables
       // that were made live-in by the compiler.
       // TODO: This may be revisited.
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Implicit data: var="
+                 << (varName ? *varName : "<unnamed>")
+                 << ", scalar in kernels -> acc.copyin(copy)\n");
       auto copyinOp =
           acc::CopyinOp::create(builder, loc, var,
                                 /*structured=*/true, /*implicit=*/true,
-                                accSupport.getVariableName(var));
+                                varName);
       copyinOp.setDataClause(acc::DataClause::acc_copy);
       return copyinOp.getOperation();
     } else {
       // Scalars are implicit firstprivate in parallel and serial construct.
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Implicit data: var="
+                 << (varName ? *varName : "<unnamed>")
+                 << ", scalar in parallel/serial -> acc.firstprivate\n");
       return acc::FirstprivateOp::create(builder, loc, var,
                                          /*structured=*/true, /*implicit=*/true,
-                                         accSupport.getVariableName(var));
+                                         varName);
     }
   } else if (isAnyAggregate) {
     Operation *newDataOp = nullptr;
@@ -527,16 +544,24 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
     // When default(present) is true, the implicit behavior is present.
     if (defaultClause.has_value() &&
         defaultClause.value() == acc::ClauseDefaultValue::Present) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Implicit data: var="
+                 << (varName ? *varName : "<unnamed>")
+                 << ", aggregate + default(present) -> acc.present\n");
       newDataOp = acc::PresentOp::create(builder, loc, var,
                                          /*structured=*/true, /*implicit=*/true,
-                                         accSupport.getVariableName(var));
+                                         varName);
       newDataOp->setAttr(acc::getFromDefaultClauseAttrName(),
                          builder.getUnitAttr());
     } else {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Implicit data: var="
+                 << (varName ? *varName : "<unnamed>")
+                 << ", aggregate -> acc.copyin(copy)\n");
       auto copyinOp =
           acc::CopyinOp::create(builder, loc, var,
                                 /*structured=*/true, /*implicit=*/true,
-                                accSupport.getVariableName(var));
+                                varName);
       copyinOp.setDataClause(acc::DataClause::acc_copy);
       newDataOp = copyinOp.getOperation();
     }
