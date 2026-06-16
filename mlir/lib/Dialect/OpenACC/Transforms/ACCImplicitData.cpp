@@ -465,7 +465,7 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
                << ", isDevice=true -> acc.deviceptr\n");
     return acc::DevicePtrOp::create(builder, loc, var,
                                     /*structured=*/true, /*implicit=*/true,
-                                    varName);
+                                    accSupport.getVariableName(var));
   }
 
   Operation *op = nullptr;
@@ -478,20 +478,20 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
     if (isa<acc::NoCreateOp>(op))
       return acc::NoCreateOp::create(builder, loc, var,
                                      /*structured=*/true, /*implicit=*/true,
-                                     varName,
+                                     accSupport.getVariableName(var),
                                      acc::getBounds(op));
 
     if (isa<acc::DevicePtrOp>(op))
       return acc::DevicePtrOp::create(builder, loc, var,
                                       /*structured=*/true, /*implicit=*/true,
-                                      varName,
+                                      accSupport.getVariableName(var),
                                       acc::getBounds(op));
 
     // The original data clause op is a PresentOp, CopyinOp, or CreateOp,
     // hence guaranteed to be present.
     return acc::PresentOp::create(builder, loc, var,
                                   /*structured=*/true, /*implicit=*/true,
-                                  varName,
+                                  accSupport.getVariableName(var),
                                   acc::getBounds(op));
   }
 
@@ -506,7 +506,7 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
       auto copyinOp =
           acc::CopyinOp::create(builder, loc, var,
                                 /*structured=*/true, /*implicit=*/true,
-                                varName);
+                                accSupport.getVariableName(var));
       copyinOp.setDataClause(acc::DataClause::acc_reduction);
       return copyinOp.getOperation();
     }
@@ -525,7 +525,7 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
       auto copyinOp =
           acc::CopyinOp::create(builder, loc, var,
                                 /*structured=*/true, /*implicit=*/true,
-                                varName);
+                                accSupport.getVariableName(var));
       copyinOp.setDataClause(acc::DataClause::acc_copy);
       return copyinOp.getOperation();
     } else {
@@ -536,7 +536,7 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
                  << ", scalar in parallel/serial -> acc.firstprivate\n");
       return acc::FirstprivateOp::create(builder, loc, var,
                                          /*structured=*/true, /*implicit=*/true,
-                                         varName);
+                                         accSupport.getVariableName(var));
     }
   } else if (isAnyAggregate) {
     Operation *newDataOp = nullptr;
@@ -550,7 +550,7 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
                  << ", aggregate + default(present) -> acc.present\n");
       newDataOp = acc::PresentOp::create(builder, loc, var,
                                          /*structured=*/true, /*implicit=*/true,
-                                         varName);
+                                         accSupport.getVariableName(var));
       newDataOp->setAttr(acc::getFromDefaultClauseAttrName(),
                          builder.getUnitAttr());
     } else {
@@ -561,7 +561,7 @@ Operation *ACCImplicitData::generateDataClauseOpForCandidate(
       auto copyinOp =
           acc::CopyinOp::create(builder, loc, var,
                                 /*structured=*/true, /*implicit=*/true,
-                                varName);
+                                accSupport.getVariableName(var));
       copyinOp.setDataClause(acc::DataClause::acc_copy);
       newDataOp = copyinOp.getOperation();
     }
