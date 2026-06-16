@@ -168,6 +168,7 @@ void *CUFAllocPinned(
     std::size_t sizeInBytes, [[maybe_unused]] std::int64_t *asyncObject) {
   void *p;
   CUDA_REPORT_IF_ERROR(cudaMallocHost((void **)&p, sizeInBytes));
+  printf("CUFAllocPinned: %p\n", p);
   return p;
 }
 
