@@ -22,10 +22,14 @@
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/Format.h"
 
 using namespace mlir;
 
 using OpenACCIRBuilder = llvm::OpenMPIRBuilder;
+
+#define DEBUG_TYPE "openacc-to-llvmir"
 
 //===----------------------------------------------------------------------===//
 // Utility functions
@@ -91,6 +95,7 @@ processOperands(llvm::IRBuilderBase &builder,
   auto *i64Ty = llvm::Type::getInt64Ty(ctx);
   auto *arrI64Ty = llvm::ArrayType::get(i64Ty, totalNbOperand);
 
+  auto flagHas = [&](uint64_t bit) { return (operandFlag & bit) != 0; };
   for (Value data : operands) {
     llvm::Value *dataValue = moduleTranslation.lookupValue(data);
 
@@ -127,6 +132,20 @@ processOperands(llvm::IRBuilderBase &builder,
         {builder.getInt32(0), builder.getInt32(index)});
     builder.CreateStore(dataSize, sizeGEP);
 
+    LLVM_DEBUG({
+      auto defOpName = data.getDefiningOp()
+                           ? data.getDefiningOp()->getName().getStringRef()
+                           : StringRef("<block_argument>");
+      llvm::dbgs() << "OpenACC map operand: runtimeOp=" << op->getName()
+                   << " index=" << index << " value=" << data
+                   << " valueType=" << data.getType() << " defOp=" << defOpName
+                   << " flag=" << llvm::format_hex(operandFlag, 6)
+                   << " bits{to=" << flagHas(kDeviceCopyinFlag)
+                   << ",from=" << flagHas(kHostCopyoutFlag)
+                   << ",delete=" << flagHas(kDeleteFlag)
+                   << ",present=" << flagHas(kPresentFlag)
+                   << ",hold=" << flagHas(kHoldFlag) << "}\n";
+    });
     flags.push_back(operandFlag);
     llvm::Constant *mapName =
         mlir::LLVM::createMappingInformation(data.getLoc(), *accBuilder);
@@ -294,14 +313,23 @@ static LogicalResult convertDataOp(acc::DataOp &op,
   llvm::SmallVector<mlir::Value> copyin, copyout, create, present,
       deleteOperands;
   for (mlir::Value dataOp : op.getDataClauseOperands()) {
+    LLVM_DEBUG(llvm::dbgs() << "OpenACC classify data clause operand: "
+                            << dataOp.getDefiningOp()->getName()
+                            << " accVarType=" << dataOp.getType() << "\n");
     if (auto devicePtrOp = mlir::dyn_cast_or_null<acc::GetDevicePtrOp>(
             dataOp.getDefiningOp())) {
       for (auto &u : devicePtrOp.getAccPtr().getUses()) {
         if (mlir::dyn_cast_or_null<acc::DeleteOp>(u.getOwner())) {
+          LLVM_DEBUG(llvm::dbgs()
+                     << "  classify -> delete varPtr="
+                     << devicePtrOp.getVarPtr() << "\n");
           deleteOperands.push_back(devicePtrOp.getVarPtr());
         } else if (mlir::dyn_cast_or_null<acc::CopyoutOp>(u.getOwner())) {
           // TODO copyout zero currenlty handled as copyout. Update when
           // extension available.
+          LLVM_DEBUG(llvm::dbgs()
+                     << "  classify -> copyout varPtr="
+                     << devicePtrOp.getVarPtr() << "\n");
           copyout.push_back(devicePtrOp.getVarPtr());
         }
       }
@@ -309,14 +337,23 @@ static LogicalResult convertDataOp(acc::DataOp &op,
                    dataOp.getDefiningOp())) {
       // TODO copyin readonly currenlty handled as copyin. Update when extension
       // available.
+      LLVM_DEBUG(llvm::dbgs()
+                 << "  classify -> copyin varPtr=" << copyinOp.getVarPtr()
+                 << "\n");
       copyin.push_back(copyinOp.getVarPtr());
     } else if (auto createOp = mlir::dyn_cast_or_null<acc::CreateOp>(
                    dataOp.getDefiningOp())) {
       // TODO create zero currenlty handled as create. Update when extension
       // available.
+      LLVM_DEBUG(llvm::dbgs()
+                 << "  classify -> create varPtr=" << createOp.getVarPtr()
+                 << "\n");
       create.push_back(createOp.getVarPtr());
     } else if (auto presentOp = mlir::dyn_cast_or_null<acc::PresentOp>(
                    dataOp.getDefiningOp())) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "  classify -> present varPtr=" << presentOp.getVarPtr()
+                 << "\n");
       present.push_back(createOp.getVarPtr());
     }
   }
