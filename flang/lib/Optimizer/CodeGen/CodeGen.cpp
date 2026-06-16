@@ -3501,7 +3501,9 @@ struct GlobalOpConversion : public fir::FIROpConversion<fir::GlobalOp> {
     // cudaRegisterVar; using direct addressing instead of GOT indirection
     // causes the wrong address to be registered, leading to segfaults.
     bool isDefinition = global.isInitialized();
-    bool isCUDADeviceVar = global.getDataAttr().has_value();
+    bool isCUDADeviceVar = false;
+    if (auto dataAttr = global.getDataAttr())
+      isCUDADeviceVar = cuf::isDeviceDataAttribute(*dataAttr);
     if (isDefinition && !isCUDADeviceVar &&
         linkage == mlir::LLVM::Linkage::External &&
         fir::getTargetTriple(module).isOSBinFormatELF()) {
