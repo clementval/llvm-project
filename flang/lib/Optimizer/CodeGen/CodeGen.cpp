@@ -1376,9 +1376,9 @@ getMallocInModule(ModuleOp mod, fir::AllocMemOp op,
 /// allocated must keep being released by libc free, and vice versa.
 static std::string getHeapAllocName(mlir::Operation *op, llvm::StringRef plain,
                                     const fir::FIRToLLVMPassOptions &options) {
-  // Device modules keep libc names; the mode entry points are host-side.
+  // Device modules keep libc names unless the gpuMalloc option is set.
   if (op->getParentOfType<mlir::gpu::GPUModuleOp>())
-    return plain.str();
+    return options.gpuMalloc.empty() ? plain.str() : options.gpuMalloc.str();
   switch (fir::getCudaHeapAllocMode(op)) {
   case fir::CudaHeapAllocMode::Unified:
     return (plain + options.unifiedHeapAllocSuffix).str();

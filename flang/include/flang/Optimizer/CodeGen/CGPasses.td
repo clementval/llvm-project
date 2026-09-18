@@ -55,7 +55,9 @@ def FIRToLLVMLowering : Pass<"fir-to-llvm-ir", "mlir::ModuleOp"> {
     Option<"unsafeFPConversion", "unsafe-fp-conversion", "bool",
            /*default=*/"false",
            "Use plain fptosi/fptoui instead of saturating intrinsics "
-           "for FP-to-integer conversions.">
+           "for FP-to-integer conversions.">,
+    Option<"gpuMalloc", "gpu-malloc", "std::string",
+           /*default=*/"", "Name of the malloc function used in gpu.module op">
   ];
 }
 
